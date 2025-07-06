@@ -150,7 +150,7 @@ function JuiceMachine({ zombieCount, onAward, initialCoins, onDone }) {
         <button
           className="neon-btn jm-btn"
           disabled={zombieCount === 0 || juicing}
-          onClick={zombieCount !== 0 && !juicing ? handleJuice : undefined}
+          onClick={handleJuice}
           aria-busy={juicing ? "true" : undefined}
         >
           {juicing ? "Juicing..." : "Make Zombie Juice"}
