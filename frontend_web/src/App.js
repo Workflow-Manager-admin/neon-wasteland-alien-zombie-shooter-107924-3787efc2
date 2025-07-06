@@ -174,14 +174,28 @@ function App() {
       );
     }
 
+    // Track all changes to hud.zombies and log, to trace out-of-sync bugs.
+    // Moved hook to root of App to ensure hooks order.
+    // eslint-disable-next-line
+    useEffect(() => {
+      console.debug("[App DEBUG] hud.zombies changed:", hud.zombies);
+    }, [hud.zombies]);
+
     if (gameState === 'complete' && pendingJuicing) {
       // DEBUG: Log Overlay state at every render for diagnosis
       // eslint-disable-next-line
-      console.debug("[Overlay/JuiceMachine] state: hud.zombies =", hud.zombies, "hud.coins =", hud.coins, "payout =", payout, "hud object:", hud);
+      console.debug("[Overlay/JuiceMachine] state: hud.zombies =", hud.zombies, "hud.coins =", hud.coins, "payout =", payout, "hud object:", hud, "pendingJuicing =", pendingJuicing);
+
 
       const handleJuiceAward = (coinsAwarded) => {
+        // If zombie count is already zero, skip mutation for safety
         setPayout(coinsAwarded);
         setHud(hudPrev => {
+          if (hudPrev.zombies === 0) {
+            // eslint-disable-next-line
+            console.debug("[handleJuiceAward] Avoid double-zeroing, current zombies=0");
+            return { ...hudPrev, coins: hudPrev.coins + coinsAwarded };
+          }
           // Explicitly set zombies count to zero so prop is correct for JuiceMachine and Overlay immediately
           return {
             ...hudPrev,
@@ -191,11 +205,15 @@ function App() {
         });
       };
       const handleJuicingDone = () => {
-        // On animation done: also double-clear zombies from HUD to prevent possible ghost value
-        setHud(hudPrev => ({
-          ...hudPrev,
-          zombies: 0,
-        }));
+        // Only clear zombies if not already cleared, to prevent race condition
+        setHud(hudPrev => {
+          if (hudPrev.zombies === 0) {
+            // eslint-disable-next-line
+            console.debug("[handleJuicingDone] zombies already zero, skip re-zero");
+            return hudPrev;
+          }
+          return { ...hudPrev, zombies: 0 };
+        });
         setTimeout(() => {
           setPendingJuicing(false);
           setPayout(0);

@@ -16,6 +16,12 @@ function JuiceMachine({ zombieCount, onAward, initialCoins, onDone }) {
     // eslint-disable-next-line
     console.debug("[JuiceMachine] zombieCount prop =", zombieCount, "initialCoins =", initialCoins);
   }, [zombieCount, initialCoins]);
+  // Extra debug: log on every render of the component
+  useEffect(() => {
+    // eslint-disable-next-line
+    console.debug("[JuiceMachine] Render: zombieCount =", zombieCount, "juicing =", juicing);
+  });
+
   // Animation state for juicing
   const [juicing, setJuicing] = useState(false);
 
@@ -156,17 +162,60 @@ function JuiceMachine({ zombieCount, onAward, initialCoins, onDone }) {
         {/* Make Zombie Juice Button */}
         <button
           className="neon-btn jm-btn"
-          // Explicitly only disabled when zombieCount === 0 or juicing
-          disabled={zombieCount === 0 || juicing}
-          onClick={zombieCount === 0 || juicing ? undefined : handleJuice}
+          // Explicitly only disabled when zombieCount is not a safe natural number, zero, or currently juicing
+          disabled={
+            typeof zombieCount !== "number" ||
+            zombieCount < 1 ||
+            !Number.isFinite(zombieCount) ||
+            juicing
+          }
+          onClick={
+            typeof zombieCount !== "number" ||
+            zombieCount < 1 ||
+            !Number.isFinite(zombieCount) ||
+            juicing
+              ? undefined
+              : handleJuice
+          }
           aria-busy={juicing ? "true" : undefined}
-          tabIndex={zombieCount === 0 || juicing ? -1 : 0}
+          tabIndex={
+            typeof zombieCount !== "number" ||
+            zombieCount < 1 ||
+            !Number.isFinite(zombieCount) ||
+            juicing
+              ? -1
+              : 0
+          }
           style={{
             // Force pointer because our CSS disables pointer-events only when disabled
-            cursor: zombieCount === 0 || juicing ? "not-allowed" : "pointer",
-            pointerEvents: zombieCount === 0 || juicing ? "none" : "auto",
-            opacity: zombieCount === 0 || juicing ? 0.66 : 1,
-            filter: zombieCount === 0 || juicing ? "grayscale(0.45)" : "none"
+            cursor:
+              typeof zombieCount !== "number" ||
+              zombieCount < 1 ||
+              !Number.isFinite(zombieCount) ||
+              juicing
+                ? "not-allowed"
+                : "pointer",
+            pointerEvents:
+              typeof zombieCount !== "number" ||
+              zombieCount < 1 ||
+              !Number.isFinite(zombieCount) ||
+              juicing
+                ? "none"
+                : "auto",
+            opacity:
+              typeof zombieCount !== "number" ||
+              zombieCount < 1 ||
+              !Number.isFinite(zombieCount) ||
+              juicing
+                ? 0.66
+                : 1,
+            filter:
+              typeof zombieCount !== "number" ||
+              zombieCount < 1 ||
+              !Number.isFinite(zombieCount) ||
+              juicing
+                ? "grayscale(0.45)"
+                : "none"
           }}
         >
           {juicing ? "Juicing..." : "Make Zombie Juice"}
