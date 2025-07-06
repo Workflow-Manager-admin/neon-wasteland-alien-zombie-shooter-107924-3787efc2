@@ -12,6 +12,36 @@ const THEME = {
   canvasHeight: 600,
 };
 
+// New: Zombie types config array
+const zombieTypes = [
+  {
+    name: "green",
+    color: "#6efd9a",
+    shadow: "#39ff1475",
+    head: "#161e13",
+    eyes: "#fb73fa",
+    speed: 1.2,
+    w: 44,
+    h: 62,
+    coins: +2,
+    labelColor: "#39ff14",
+    label: "+2",
+  },
+  {
+    name: "red",
+    color: "#fa417a",
+    shadow: "#fa296677",
+    head: "#380914",
+    eyes: "#f4f14f",
+    speed: 2.8,
+    w: 27,
+    h: 46,
+    coins: -1,
+    labelColor: "#df145f",
+    label: "-1",
+  }
+];
+
 // Helper for controlling frame rate
 const useAnimationFrame = (callback, isRunning = true) => {
   const req = useRef();
@@ -54,7 +84,6 @@ function App() {
   const startGame = () => {
     world.current = new GameWorld(THEME, () => {
       // On HUD update: called from world
-      // Safely access getHUD() only if world.current is not null
       if (world.current && typeof world.current.getHUD === "function") {
         const s = world.current.getHUD();
         setHud(s);
@@ -84,7 +113,6 @@ function App() {
       if (gameState !== 'running') return;
       if (["ArrowLeft", "a", "A"].includes(e.key)) setControl(s => ({ ...s, left: true }));
       if (["ArrowRight", "d", "D"].includes(e.key)) setControl(s => ({ ...s, right: true }));
-      // Jump: Only trigger on fresh "ArrowUp" press, not auto-repeat
       if (["ArrowUp"].includes(e.key) && !e.repeat) setControl(s => ({ ...s, jump: true }));
       if ([" ", "w", "W"].includes(e.key)) setControl(s => ({ ...s, shoot: true }));
     };
@@ -140,18 +168,13 @@ function App() {
       );
     }
     if (gameState === 'complete') {
-      // Enhanced overlay with JuiceMachine logic:
-      // - Make Zombie Juice button triggers juicing animation
-      // - After 1.6s, award coins, reset zombiesCollected, update coin HUD, show floating '+X coins', and set for next level
       const handleJuiceAward = (coinsAwarded) => {
-        // Update coins by awarded amount, reset zombies count
         setHud(hudPrev => ({
           ...hudPrev,
           coins: hudPrev.coins + coinsAwarded,
-          zombies: 0, // all juiced!
+          zombies: 0,
         }));
       };
-      // After animation, this callback triggers next level (proceed)
       const handleJuicingDone = () => {
         startGame();
       };
@@ -194,13 +217,11 @@ function App() {
         <div className="hud-title">LEVEL {hud.level}</div>
       </div>
       <div className="hud-right">
-        {/* Coins display is always current */}
         <div className="hud-label coins"><span className="coin-icon"/> {hud.coins}</div>
       </div>
     </div>
   );
 
-  // Neon Juice Meter
   function JuiceMeter({juice, max, accent}) {
     const pct = Math.min(juice / Math.max(max, 1), 1);
     return (
@@ -214,7 +235,6 @@ function App() {
     );
   }
 
-  // Neon control buttons (mobile or always visible at bottom)
   function NeonControls() {
     return (
       <div className={"btn-panel" + (mobile ? " btn-panel-mobile" : "")}>
@@ -279,7 +299,6 @@ function App() {
 }
 
 // -- GAME CODE BELOW (pure JS/HTML/CSS shapes)
-// World, player, zombies, projectiles, and logic
 class GameWorld {
   /**
    * GameWorld manages the main gameplay, player and enemy logic.
@@ -290,15 +309,13 @@ class GameWorld {
     this.onHUD = onHUD;
     this.onGameOver = onGameOver;
     this.onLevelComplete = onLevelComplete;
-    // --- Game parameters
     this.width = theme.canvasWidth;
     this.height = theme.canvasHeight;
     this.groundY = this.height - 120;
 
-    // --- Jump mechanic state
-    this.playerGroundY = this.groundY-48; // y=550
+    this.playerGroundY = this.groundY-48;
     this.playerGravity = 1.6;
-    this.playerJumpStrength = 22.5; // tweak for feel
+    this.playerJumpStrength = 22.5;
     this.playerVelocityY = 0;
     this.playerIsJumping = false;
 
@@ -311,7 +328,6 @@ class GameWorld {
     this.scrollX = 0;
     this.score = 0;
     this.coins = 0;
-    // this.ammo = 6; // Unlimited ammo—removed
     this.zombies = [];
     this.bullets = [];
     this.effects = [];
@@ -319,7 +335,6 @@ class GameWorld {
     this.zombiesJuiced = 0;
     this.zombiesToJuice = 6 + this.level * 2;
 
-    // -- Player state with jump mechanics
     this.player = {
       x: 100,
       y: this.playerGroundY,
@@ -330,14 +345,13 @@ class GameWorld {
       alive: true,
       action: 'idle',
       shootCooldown: 0,
-      // jump state
       velocityY: 0,
       isJumping: false,
     };
     this.playerVelocityY = 0;
     this.playerIsJumping = false;
 
-    // place some zombies to start
+    // spawn initial zombies (randomized types)
     for (let i = 0; i < this.zombiesToJuice; ++i) {
       this.zombies.push(this._spawnZombie(400+i*90+Math.random()*90));
     }
@@ -349,7 +363,6 @@ class GameWorld {
 
   // PUBLIC_INTERFACE
   update(control) {
-    // Only run when playing
     if (this.gameOver || this.levelComplete) return;
 
     // Player LEFT/RIGHT
@@ -358,33 +371,26 @@ class GameWorld {
     if (control.right) dx += this.player.speed;
     this.player.x += dx;
     this.player.dir = dx > 0 ? 1 : dx < 0 ? -1 : this.player.dir;
-    // Clamp world: infinite right-scroll but not left
     if (this.player.x < 20) this.player.x = 20;
-    // Scroll view if player goes >40% from left
     if (this.player.x - this.scrollX > this.width * 0.4)
       this.scrollX = this.player.x - this.width * 0.4;
     if (this.scrollX < 0) this.scrollX = 0;
 
-    // --- Jumping mechanics ---
-    // Only allow jump if player is on ground (no double-jump)
-    // If jump is pressed and player is on ground, initiate jump velocity
+    // Jumping mechanics
     let onGround = (Math.abs(this.player.y - this.playerGroundY) < 1);
     if (control.jump && onGround && !this.player.isJumping) {
       this.player.velocityY = -this.playerJumpStrength;
       this.player.isJumping = true;
     }
-    // Apply gravity if in air or jumping
     if (!onGround || this.player.velocityY !== 0) {
       this.player.velocityY += this.playerGravity;
       this.player.y += this.player.velocityY;
-      // Landing logic: when returning to/below ground level
       if (this.player.y > this.playerGroundY) {
         this.player.y = this.playerGroundY;
         this.player.velocityY = 0;
         this.player.isJumping = false;
       }
     } else {
-      // Ensure proper state on ground
       this.player.velocityY = 0;
       this.player.isJumping = false;
       this.player.y = this.playerGroundY;
@@ -393,23 +399,35 @@ class GameWorld {
     // Shooting
     if (control.shoot && this.player.shootCooldown <= 0) {
       this._shoot();
-      // No ammo decrement
-      this.player.shootCooldown = 16; // frames delay
+      this.player.shootCooldown = 16;
       this.effects.push({type:'muzzle', x:this.player.x+this.player.dir*30, y:this.player.y+32, t:0});
     }
     if (this.player.shootCooldown > 0) this.player.shootCooldown -= 1;
 
-    // Bullets flying
+    // Bullets logic (now awards coins by zombie type, shows floating label)
     this.bullets.forEach((b,i,arr) => {
       b.x += b.vx;
       // Collide with zombies
       for (let z of this.zombies) {
         if (!z.dead && z.x < b.x && b.x < z.x+z.w && z.y < b.y && b.y < z.y+z.h) {
-          z.dead = true;  // Mark as dead
+          z.dead = true;
+          z._diedAt = Date.now();
+          z._killedBy = 'bullet';
           this.zombiesJuiced += 1;
-          this.coins += Math.floor(2+Math.random()*4);
+          this.coins += z.coins;
           this.score += 100;
           arr[i]._hit = true;
+          // Floating coin/score label
+          this.effects.push({
+            type: 'label',
+            x: z.x + z.w/2,
+            y: z.y - 13,
+            t: 0,
+            text: z.label,
+            fill: z.labelColor,
+            outline: "#1a1a1a",
+          });
+          // Juicing visual effect
           this.effects.push({type:'juice', x:z.x+z.w/2, y:z.y+z.h/2, t:0});
         }
       }
@@ -427,7 +445,6 @@ class GameWorld {
         z._vy += 0.5;
       }
     }
-    // Remove offscreen/fully fallen zombies
     this.zombies = this.zombies.filter(z => !z._falling || z.y < this.groundY+90);
 
     // Enemy zombies: AI walk left
@@ -435,7 +452,7 @@ class GameWorld {
       if (!z.dead) {
         z.x -= z.speed;
         // Respawn if out of view to right
-        if (z.x < this.scrollX-120) {
+        if (z.x < this.scrollX-140) {
           Object.assign(z, this._spawnZombie(this.scrollX + this.width + 120 + Math.random()*80));
         }
         // Collide with player
@@ -446,16 +463,15 @@ class GameWorld {
       }
     }
 
-    // Ammo mechanics removed for unlimited bullets!
-
-    // Particle effects update
+    // Particle and effect updates: include 'label' for floating reward
     for (let e of this.effects) {
       e.t += 1;
     }
     this.effects = this.effects.filter(e =>
       (e.type==="muzzle" && e.t<12) ||
       (e.type==="juice" && e.t<30) ||
-      (e.type==="ammo" && e.t<500)
+      (e.type==="ammo" && e.t<500) ||
+      (e.type==="label" && e.t<33)
     );
 
     // Level complete state
@@ -467,11 +483,8 @@ class GameWorld {
         this.onLevelComplete && this.onLevelComplete();
       }, 2200);
     }
-    // HUD update
     this.onHUD && this.onHUD(this.getHUD());
   }
-
-  // No ammo pickups or related effects emitted
 
   // PUBLIC_INTERFACE
   draw(canvas) {
@@ -480,7 +493,6 @@ class GameWorld {
     // BG
     this._drawBG(ctx);
 
-    // Scroll transform
     ctx.save();
     ctx.translate(-this.scrollX,0);
 
@@ -533,7 +545,7 @@ class GameWorld {
       ctx.restore();
     }
 
-    // Particle/effects
+    // Particle/effects, including labels for coin/score (above zombie position)
     for (let e of this.effects) {
       if (e.type === 'muzzle') {
         ctx.save();
@@ -557,6 +569,26 @@ class GameWorld {
         ctx.fill();
         ctx.restore();
       }
+      if (e.type === 'label') {
+        ctx.save();
+        ctx.font = 'bold 22px Segoe UI, Arial, sans-serif';
+        let alpha = Math.max(0, 1 - e.t/32 - 0.21);
+        ctx.globalAlpha = alpha;
+        // Animate upward float
+        let yFloat = e.y - e.t*1.5 - 26*Math.max(0.3,alpha);
+        // Shadow
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = e.outline||'#181718';
+        ctx.strokeText(e.text, e.x-13, yFloat);
+        // Neon-like
+        ctx.lineWidth = 1.2;
+        ctx.strokeStyle = "#fff3";
+        ctx.strokeText(e.text, e.x-13, yFloat-1);
+        // Fill
+        ctx.fillStyle = e.fill;
+        ctx.fillText(e.text, e.x-13, yFloat);
+        ctx.restore();
+      }
       if (e.type === 'ammo') {
         ctx.save();
         ctx.globalAlpha = Math.abs(Math.sin(e.t/10));
@@ -567,7 +599,6 @@ class GameWorld {
         ctx.shadowBlur = 12;
         ctx.fill();
         ctx.restore();
-        // Shell highlight
         ctx.save();
         ctx.beginPath();
         ctx.rect(e.x-7, e.y-12, 14, 24);
@@ -583,21 +614,19 @@ class GameWorld {
     ctx.restore();
   }
 
-  // API: get HUD state
+  // API: get HUD state (juice:zombies juiced; coins, etc)
   getHUD() {
     return {
       level: this.level,
       score: this.score,
       coins: this.coins,
       juice: this.zombiesJuiced,
-      // ammo: this.ammo, // removed
       zombies: this.zombiesJuiced,
     };
   }
 
-  // -- Internal game logic
+  // Player shooting
   _shoot() {
-    // Player shoots
     this.bullets.push({
       x: this.player.x + this.player.dir * 32,
       y: this.player.y + 22,
@@ -606,15 +635,26 @@ class GameWorld {
     });
   }
 
+  // Spawn zombie helper: randomize type
   _spawnZombie(x) {
+    const type = zombieTypes[Math.random()<0.38 ? 1 : 0]; // 62% green, 38% red (or 50/50 if desired)
+    // Each zombie now carries type name and all props for rendering and reward
     return {
       x,
-      y: this.groundY-44,
-      w: 38 + Math.random()*12,
-      h: 56,
-      speed: 1.7 + Math.random()*1.2,
+      y: this.groundY - type.h + 8,
+      w: type.w,
+      h: type.h,
+      speed: type.speed + Math.random()*0.45,
       dead: false,
-      _falling: false
+      _falling: false,
+      type: type.name,
+      color: type.color,
+      shadow: type.shadow,
+      head: type.head,
+      eyes: type.eyes,
+      coins: type.coins,
+      label: type.label,
+      labelColor: type.labelColor,
     };
   }
 
@@ -629,14 +669,12 @@ class GameWorld {
 
   // -- Visual helpers
   _drawBG(ctx) {
-    // Neon gradient bg
     const grd = ctx.createLinearGradient(0,0,0,this.height);
     grd.addColorStop(0, "#292940");
     grd.addColorStop(0.4, "#1a1a1a");
     grd.addColorStop(1, "#252536");
     ctx.fillStyle = grd;
     ctx.fillRect(0,0,this.width,this.height);
-    // Neon light haze
     ctx.save();
     ctx.globalAlpha = 0.59;
     ctx.beginPath();
@@ -705,47 +743,57 @@ class GameWorld {
     ctx.restore();
   }
 
+  // PUBLIC_INTERFACE
   _drawZombie(ctx, z) {
     ctx.save();
     ctx.translate(z.x, z.y);
     // Body
     ctx.save();
     ctx.beginPath();
-    ctx.roundRect(-z.w/2, 0, z.w, z.h, 10);
-    ctx.fillStyle = z.dead ? "#3ba04e" : "#6efd9a";
-    ctx.shadowColor = z.dead ? "#37c84666" : "#39ff1475";
-    ctx.shadowBlur = z.dead ? 2 : 16;
+    ctx.roundRect(-z.w/2, 0, z.w, z.h, Math.max(8,Math.min(16,Math.round(z.w/4))));
+    // Use color/shadow/sizing by type
+    ctx.fillStyle = z.dead
+      ? (z.type==='red' ? "#94434b" : "#3ba04e")
+      : z.color;
+    ctx.shadowColor = z.dead
+      ? (z.type==='red' ? "#df145f70" : "#37c84666")
+      : z.shadow;
+    ctx.shadowBlur = z.dead ? 3 : 17;
     ctx.globalAlpha = z.dead ? 0.65 : 1;
     ctx.fill();
     ctx.restore();
+
     // Head
     ctx.save();
     ctx.beginPath();
-    ctx.ellipse(0, -10, 17, 15, 0, 0, Math.PI * 2);
-    ctx.fillStyle = "#161e13";
-    ctx.shadowColor = "#39ff14";
-    ctx.shadowBlur = 5;
+    ctx.ellipse(0, -10, Math.max(10, z.w/2), Math.max(7,z.w/2.7), 0, 0, Math.PI * 2);
+    ctx.fillStyle = z.head;
+    ctx.shadowColor = z.type === "red" ? "#df145f" : "#39ff14";
+    ctx.shadowBlur = 6;
     ctx.fill();
     ctx.restore();
+
     // Eyes
     ctx.save();
-    ctx.globalAlpha = z.dead ? 0.4 : 1;
+    ctx.globalAlpha = z.dead ? 0.33 : 1;
     ctx.beginPath();
-    ctx.arc(-7, -12, 3, 0, Math.PI*2);
-    ctx.arc(+7, -12, 3, 0, Math.PI*2);
-    ctx.fillStyle = "#fb73fa";
-    ctx.shadowColor = "#aa2c69";
+    ctx.arc(-7, -12, z.type==='red'?2:3, 0, Math.PI*2);
+    ctx.arc(+7, -12, z.type==='red'?2:3, 0, Math.PI*2);
+    ctx.fillStyle = z.eyes;
+    ctx.shadowColor = z.type === "red" ? "#fff01e" : "#aa2c69";
     ctx.shadowBlur = 8;
     ctx.fill();
     ctx.restore();
+
     // Mouth
     ctx.save();
     ctx.beginPath();
-    ctx.arc(0, -3, 8, 0, Math.PI, false);
+    ctx.arc(0, -3, z.type==='red'?5:8, 0, Math.PI, false);
     ctx.lineWidth = 2;
     ctx.strokeStyle = "#aa2c69";
     ctx.stroke();
     ctx.restore();
+
     ctx.restore();
   }
 }
