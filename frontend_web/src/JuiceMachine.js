@@ -21,20 +21,21 @@ function JuiceMachine({ zombieCount, onAward, initialCoins, onDone }) {
   // Coin display (always synced to parent prop, but float anim is local)
   const [localCoins, setLocalCoins] = useState(initialCoins || 0);
 
-  // If parent coin value changes, sync display accordingly
+  // Sync localCoins with any HUD updates
   useEffect(() => {
     setLocalCoins(initialCoins || 0);
   }, [initialCoins]);
 
-  // Button click triggers juicing animation and coin gain
-  const handleJuice = () => {
+  // PUBLIC_INTERFACE
+  function handleJuice(e) {
+    // Prevent double-juicing or juicing when nothing to juice
     if (juicing || zombieCount === 0) return;
     setJuicing(true);
     // Animation: After 1.6s, award coins, reset zombies, show next step
     setTimeout(() => {
       // Award coins (2 per zombie as per requirements)
       const coinsEarned = zombieCount * 2;
-      setShowCoinGain(false); // Reset in case
+      setShowCoinGain(false); // Reset just in case
       setTimeout(() => {
         setCoinGain(coinsEarned);
         setShowCoinGain(true);
@@ -47,7 +48,7 @@ function JuiceMachine({ zombieCount, onAward, initialCoins, onDone }) {
         setTimeout(onDone, 1050); // show "+X coins" anim, then proceed
       }
     }, 1600);
-  };
+  }
 
   // Build zombie stack
   const zombieBlocks = [];
@@ -102,9 +103,8 @@ function JuiceMachine({ zombieCount, onAward, initialCoins, onDone }) {
     ) : null
   );
 
-  // Add CSS for floating coins animation
+  // Keyframes once-only patch (for coin float)
   useEffect(() => {
-    // Only add once
     if (!document.getElementById("coin-float-up-keyframes")) {
       const style = document.createElement("style");
       style.id = "coin-float-up-keyframes";
@@ -122,12 +122,15 @@ function JuiceMachine({ zombieCount, onAward, initialCoins, onDone }) {
     }
   }, []);
 
+  // By requirements: Do NOT set pointer-events: none on .jm-btn unless disabled.
+  // onClick should always be present; HTML disables event when 'disabled' attribute is set.
+
   return (
     <div className="juicemachine-root" style={{ position: "relative" }}>
       <div className={"jm-machine" + (juicing ? " juicing" : "")} style={{ userSelect: "none" }}>
         {/* Plunger */}
         <div className="jm-plunger"></div>
-        {/* Zombies stack */}
+        {/* Zombie stack */}
         <div className="jm-zombie-stack">{zombieBlocks}</div>
         {/* Bottle container */}
         <div className="jm-bottle">
@@ -140,12 +143,15 @@ function JuiceMachine({ zombieCount, onAward, initialCoins, onDone }) {
           ></div>
           <div className="jm-bottle-outline"></div>
         </div>
-        {/* Make Zombie Juice Button */}
+        {/* Make Zombie Juice Button: follows
+              <button disabled={zombieCount === 0} onClick={handleJuice}>Make Zombie Juice</button>
+           Disable also during animation!
+        */}
         <button
           className="neon-btn jm-btn"
-          onClick={handleJuice}
           disabled={zombieCount === 0 || juicing}
-          aria-busy={juicing}
+          onClick={zombieCount !== 0 && !juicing ? handleJuice : undefined}
+          aria-busy={juicing ? "true" : undefined}
         >
           {juicing ? "Juicing..." : "Make Zombie Juice"}
         </button>
@@ -167,7 +173,6 @@ function JuiceMachine({ zombieCount, onAward, initialCoins, onDone }) {
             boxShadow: "0 0 8px #f3f14b77", border: "1.5px solid #7d6c28"
           }} />
           {localCoins}
-          {/* Floating "+X coins" */}
           <CoinGain />
         </div>
       </div>

@@ -157,11 +157,29 @@
   margin-bottom: 4px;
   padding: 0.55em 1.6em;
   z-index: 30;
+  opacity: 1;
+  filter: none;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: background 0.14s, box-shadow 0.16s, opacity 0.14s, filter 0.13s;
 }
-.jm-btn:disabled {
+.jm-btn:focus {
+  outline: 2px solid var(--neon-primary,#39ff14);
+}
+.jm-btn:disabled,
+button.jm-btn:disabled {
   opacity: 0.66;
   filter: grayscale(0.45);
   cursor: not-allowed;
+  pointer-events: none;
+}
+/* Ensure enabled button is always clickable and styled right */
+.jm-btn:not(:disabled),
+button.jm-btn:not(:disabled) {
+  pointer-events: auto;
+  opacity: 1;
+  filter: none;
+  cursor: pointer;
 }
 
 @media (max-width: 600px) {
