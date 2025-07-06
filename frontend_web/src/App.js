@@ -34,12 +34,11 @@ function App() {
     score: 0, coins: 0, juice: 0, ammo: 6, level: 1, zombies: 0,
   });
   // For control state and canvas focus
-  const [control, setControl] = useState({ left: false, right: false, shoot: false });
+  const [control, setControl] = useState({ left: false, right: false, shoot: false, jump: false });
   const [mobile, setMobile] = useState(false);
 
   // Internal refs for main game objects
   const canvasRef = useRef();
-  const requestRef = useRef();
   const world = useRef(null);
 
   // Detect mobile
@@ -67,7 +66,7 @@ function App() {
       setGameState('complete');
     });
     setGameState('running');
-    setControl({ left: false, right: false, shoot: false });
+    setControl({ left: false, right: false, shoot: false, jump: false });
   };
 
   // Game loop
@@ -84,12 +83,15 @@ function App() {
       if (gameState !== 'running') return;
       if (["ArrowLeft", "a", "A"].includes(e.key)) setControl(s => ({ ...s, left: true }));
       if (["ArrowRight", "d", "D"].includes(e.key)) setControl(s => ({ ...s, right: true }));
-      if ([" ", "ArrowUp", "w", "W"].includes(e.key)) setControl(s => ({ ...s, shoot: true }));
+      // Jump: Only trigger on fresh "ArrowUp" press, not auto-repeat
+      if (["ArrowUp"].includes(e.key) && !e.repeat) setControl(s => ({ ...s, jump: true }));
+      if ([" ", "w", "W"].includes(e.key)) setControl(s => ({ ...s, shoot: true }));
     };
     const keyup = (e) => {
       if (["ArrowLeft", "a", "A"].includes(e.key)) setControl(s => ({ ...s, left: false }));
       if (["ArrowRight", "d", "D"].includes(e.key)) setControl(s => ({ ...s, right: false }));
-      if ([" ", "ArrowUp", "w", "W"].includes(e.key)) setControl(s => ({ ...s, shoot: false }));
+      if (["ArrowUp"].includes(e.key)) setControl(s => ({ ...s, jump: false }));
+      if ([" ", "w", "W"].includes(e.key)) setControl(s => ({ ...s, shoot: false }));
     };
     window.addEventListener('keydown', keydown);
     window.addEventListener('keyup', keyup);
@@ -104,12 +106,19 @@ function App() {
     if (type === 'left') setControl(s => ({ ...s, left: enable }));
     if (type === 'right') setControl(s => ({ ...s, right: enable }));
     if (type === 'shoot') setControl(s => ({ ...s, shoot: enable }));
+    if (type === 'jump') setControl(s => ({ ...s, jump: enable }));
   };
 
-  // Button click (shoot single tap for mobile)
+  // Button click (shoot or jump for mobile)
   const handleButtonClick = (type) => {
-    if (type === 'shoot') setControl(s => ({ ...s, shoot: true }));
-    setTimeout(() => setControl(s => ({ ...s, shoot: false })), 80);
+    if (type === 'shoot') {
+      setControl(s => ({ ...s, shoot: true }));
+      setTimeout(() => setControl(s => ({ ...s, shoot: false })), 80);
+    }
+    if (type === 'jump') {
+      setControl(s => ({ ...s, jump: true }));
+      setTimeout(() => setControl(s => ({ ...s, jump: false })), 120);
+    }
   };
 
   // Render overlay screens
@@ -123,6 +132,7 @@ function App() {
           <div className="howto-container">
             <p>Move: <kbd>←</kbd> / <kbd>→</kbd> or <kbd>A</kbd>/<kbd>D</kbd></p>
             <p>Shoot: <kbd>Space</kbd> or <kbd>W</kbd>/<kbd>↑</kbd></p>
+            <p>Jump: <kbd>↑</kbd> (Up Arrow)</p>
             <p>Or use the neon buttons below (mobile friendly!)</p>
           </div>
         </div>
@@ -199,6 +209,13 @@ function App() {
         <button
           className={"neon-control-btn"}
           tabIndex={-1}
+          aria-label="Jump"
+          onTouchStart={() => handleButtonClick('jump')}
+          onClick={() => handleButtonClick('jump')}
+        >▲</button>
+        <button
+          className={"neon-control-btn"}
+          tabIndex={-1}
           aria-label="Move Right"
           onTouchStart={() => handleTouch('right', true)}
           onTouchEnd={() => handleTouch('right', false)}
@@ -242,6 +259,10 @@ function App() {
 // -- GAME CODE BELOW (pure JS/HTML/CSS shapes)
 // World, player, zombies, projectiles, and logic
 class GameWorld {
+  /**
+   * GameWorld manages the main gameplay, player and enemy logic.
+   * Now includes jump state: playerY, velocityY, gravity, isJumping.
+   */
   constructor(theme, onHUD, onGameOver, onLevelComplete) {
     this.theme = theme;
     this.onHUD = onHUD;
@@ -251,6 +272,14 @@ class GameWorld {
     this.width = theme.canvasWidth;
     this.height = theme.canvasHeight;
     this.groundY = this.height - 120;
+
+    // --- Jump mechanic state
+    this.playerGroundY = this.groundY-48; // y=550
+    this.playerGravity = 1.6;
+    this.playerJumpStrength = 22.5; // tweak for feel
+    this.playerVelocityY = 0;
+    this.playerIsJumping = false;
+
     this.state = 'running';
     this.level = 1;
     this.reset();
@@ -267,17 +296,25 @@ class GameWorld {
     this.spawnCooldown = 0;
     this.zombiesJuiced = 0;
     this.zombiesToJuice = 6 + this.level * 2;
+
+    // -- Player state with jump mechanics
     this.player = {
       x: 100,
-      y: this.groundY-48, vy: 0,
-      dir: 1,
+      y: this.playerGroundY,
       width: 32,
       height: 56,
       speed: 6,
+      dir: 1,
       alive: true,
       action: 'idle',
-      shootCooldown: 0
+      shootCooldown: 0,
+      // jump state
+      velocityY: 0,
+      isJumping: false,
     };
+    this.playerVelocityY = 0;
+    this.playerIsJumping = false;
+
     // place some zombies to start
     for (let i = 0; i < this.zombiesToJuice; ++i) {
       this.zombies.push(this._spawnZombie(400+i*90+Math.random()*90));
@@ -305,6 +342,31 @@ class GameWorld {
     if (this.player.x - this.scrollX > this.width * 0.4)
       this.scrollX = this.player.x - this.width * 0.4;
     if (this.scrollX < 0) this.scrollX = 0;
+
+    // --- Jumping mechanics ---
+    // Only allow jump if player is on ground (no double-jump)
+    // If jump is pressed and player is on ground, initiate jump velocity
+    let onGround = (Math.abs(this.player.y - this.playerGroundY) < 1);
+    if (control.jump && onGround && !this.player.isJumping) {
+      this.player.velocityY = -this.playerJumpStrength;
+      this.player.isJumping = true;
+    }
+    // Apply gravity if in air or jumping
+    if (!onGround || this.player.velocityY !== 0) {
+      this.player.velocityY += this.playerGravity;
+      this.player.y += this.player.velocityY;
+      // Landing logic: when returning to/below ground level
+      if (this.player.y > this.playerGroundY) {
+        this.player.y = this.playerGroundY;
+        this.player.velocityY = 0;
+        this.player.isJumping = false;
+      }
+    } else {
+      // Ensure proper state on ground
+      this.player.velocityY = 0;
+      this.player.isJumping = false;
+      this.player.y = this.playerGroundY;
+    }
 
     // Shooting
     if (control.shoot && this.player.shootCooldown <= 0 && this.ammo > 0) {
