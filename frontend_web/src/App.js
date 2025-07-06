@@ -54,8 +54,11 @@ function App() {
   const startGame = () => {
     world.current = new GameWorld(THEME, () => {
       // On HUD update: called from world
-      const s = world.current.getHUD();
-      setHud(s);
+      // Safely access getHUD() only if world.current is not null
+      if (world.current && typeof world.current.getHUD === "function") {
+        const s = world.current.getHUD();
+        setHud(s);
+      }
     }, () => {
       // On game over
       setGameState('over');
