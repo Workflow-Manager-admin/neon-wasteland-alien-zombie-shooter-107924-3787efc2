@@ -62,11 +62,27 @@ function App() {
   // Game state hooks
   const [gameState, setGameState] = useState('menu'); // menu | running | paused | over | complete
   const [hud, setHud] = useState({
-    score: 0, coins: 0, juice: 0, level: 1, zombies: 0, // removed ammo
+    score: 0, coins: 0, juice: 0, level: 1, zombies: 0,
   });
   // For control state and canvas focus
   const [control, setControl] = useState({ left: false, right: false, shoot: false, jump: false });
   const [mobile, setMobile] = useState(false);
+
+  // Overlay/juicer states. These are at top-level per React hook order rules.
+  // Only used during gameState === 'complete'
+  const [pendingJuicing, setPendingJuicing] = useState(false);
+  const [payout, setPayout] = useState(0);
+
+  useEffect(() => {
+    if (gameState === 'complete') {
+      setPendingJuicing(true);
+      setPayout(0);
+    }
+    if (gameState !== 'complete') {
+      setPendingJuicing(false);
+      setPayout(0);
+    }
+  }, [gameState]);
 
   // Internal refs for main game objects
   const canvasRef = useRef();
@@ -167,8 +183,10 @@ function App() {
         </div>
       );
     }
-    if (gameState === 'complete') {
+
+    if (gameState === 'complete' && pendingJuicing) {
       const handleJuiceAward = (coinsAwarded) => {
+        setPayout(coinsAwarded);
         setHud(hudPrev => ({
           ...hudPrev,
           coins: hudPrev.coins + coinsAwarded,
@@ -176,7 +194,11 @@ function App() {
         }));
       };
       const handleJuicingDone = () => {
-        startGame();
+        setTimeout(() => {
+          setPendingJuicing(false);
+          setPayout(0);
+          startGame();
+        }, 1600); // 1.6s matches animation after payout
       };
 
       return (
@@ -189,10 +211,11 @@ function App() {
             onDone={handleJuicingDone}
           />
           <div className="big-score neon-text">Zombies Juiced: {hud.zombies}</div>
-          <div className="coins neon-glow">Coins: <span>{hud.coins}</span></div>
+          <div className="coins neon-glow">Coins: <span>{hud.coins + payout}</span></div>
         </div>
       );
     }
+
     if (gameState === 'over') {
       return (
         <div className="game-overlay">
@@ -203,6 +226,7 @@ function App() {
         </div>
       );
     }
+
     return null;
   };
 
@@ -637,8 +661,7 @@ class GameWorld {
 
   // Spawn zombie helper: randomize type
   _spawnZombie(x) {
-    const type = zombieTypes[Math.random()<0.38 ? 1 : 0]; // 62% green, 38% red (or 50/50 if desired)
-    // Each zombie now carries type name and all props for rendering and reward
+    const type = zombieTypes[Math.random()<0.38 ? 1 : 0];
     return {
       x,
       y: this.groundY - type.h + 8,
@@ -751,7 +774,6 @@ class GameWorld {
     ctx.save();
     ctx.beginPath();
     ctx.roundRect(-z.w/2, 0, z.w, z.h, Math.max(8,Math.min(16,Math.round(z.w/4))));
-    // Use color/shadow/sizing by type
     ctx.fillStyle = z.dead
       ? (z.type==='red' ? "#94434b" : "#3ba04e")
       : z.color;
