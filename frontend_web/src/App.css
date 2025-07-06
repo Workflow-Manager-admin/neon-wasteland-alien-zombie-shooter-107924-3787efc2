@@ -144,10 +144,10 @@ canvas#game-canvas {
   color: var(--neon-primary);
   text-shadow: 0 0 7px var(--neon-primary), 0 0 2px black;
   animation: fade-in 0.6s;
-  pointer-events: none; /* Allow pointer events to pass through except for direct children */
+  /* pointer-events: none; -- Remove this to allow descendants normal pointer events */
 }
 .game-overlay > * {
-  pointer-events: auto; /* All modal/content/children get pointer events */
+  pointer-events: auto;
 }
 @keyframes fade-in {
   from { opacity: 0;}

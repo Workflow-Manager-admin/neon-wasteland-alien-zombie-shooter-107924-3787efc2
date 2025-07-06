@@ -126,8 +126,13 @@ function JuiceMachine({ zombieCount, onAward, initialCoins, onDone }) {
   // onClick should always be present; HTML disables event when 'disabled' attribute is set.
 
   return (
-    <div className="juicemachine-root" style={{ position: "relative" }}>
-      <div className={"jm-machine" + (juicing ? " juicing" : "")} style={{ userSelect: "none" }}>
+    <div className="juicemachine-root" style={{ position: "relative", pointerEvents: "auto" }}>
+      <div
+        className={"jm-machine" + (juicing ? " juicing" : "")}
+        style={{
+          userSelect: "none",
+          pointerEvents: "auto"
+        }}>
         {/* Plunger */}
         <div className="jm-plunger"></div>
         {/* Zombie stack */}
@@ -143,15 +148,21 @@ function JuiceMachine({ zombieCount, onAward, initialCoins, onDone }) {
           ></div>
           <div className="jm-bottle-outline"></div>
         </div>
-        {/* Make Zombie Juice Button: follows
-              <button disabled={zombieCount === 0} onClick={handleJuice}>Make Zombie Juice</button>
-           Disable also during animation!
-        */}
+        {/* Make Zombie Juice Button */}
         <button
           className="neon-btn jm-btn"
+          // Explicitly only disabled when zombieCount === 0 or juicing
           disabled={zombieCount === 0 || juicing}
-          onClick={handleJuice}
+          onClick={zombieCount === 0 || juicing ? undefined : handleJuice}
           aria-busy={juicing ? "true" : undefined}
+          tabIndex={zombieCount === 0 || juicing ? -1 : 0}
+          style={{
+            // Force pointer because our CSS disables pointer-events only when disabled
+            cursor: zombieCount === 0 || juicing ? "not-allowed" : "pointer",
+            pointerEvents: zombieCount === 0 || juicing ? "none" : "auto",
+            opacity: zombieCount === 0 || juicing ? 0.66 : 1,
+            filter: zombieCount === 0 || juicing ? "grayscale(0.45)" : "none"
+          }}
         >
           {juicing ? "Juicing..." : "Make Zombie Juice"}
         </button>
