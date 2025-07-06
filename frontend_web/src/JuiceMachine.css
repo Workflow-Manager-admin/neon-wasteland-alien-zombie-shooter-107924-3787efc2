@@ -168,20 +168,22 @@
 .jm-btn:focus {
   outline: 2px solid var(--neon-primary,#39ff14);
 }
+/* Only disable pointer-events when actually disabled.
+   enabled buttons always preserve pointer-events and pointer cursor. */
 .jm-btn:disabled,
 button.jm-btn:disabled {
   opacity: 0.66;
   filter: grayscale(0.45);
-  cursor: not-allowed;
-  pointer-events: none;
+  cursor: not-allowed !important;
+  pointer-events: none !important;
 }
-/* Ensure enabled button is always clickable and styled right */
+/* Ensure enabled button is always clickable and pointer cursor */
 .jm-btn:not(:disabled),
 button.jm-btn:not(:disabled) {
-  pointer-events: auto;
+  pointer-events: auto !important;
   opacity: 1;
   filter: none;
-  cursor: pointer;
+  cursor: pointer !important;
 }
 
 @media (max-width: 600px) {
