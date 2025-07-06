@@ -12,7 +12,10 @@ const THEME = {
   canvasHeight: 600,
 };
 
-// New: Zombie types config array
+/**
+ * The only zombie type: green zombie.
+ * All gameplay, UI, and coin logic is now tied to this type.
+ */
 const zombieTypes = [
   {
     name: "green",
@@ -23,22 +26,9 @@ const zombieTypes = [
     speed: 1.2,
     w: 44,
     h: 62,
-    coins: +2,
+    coins: 2,
     labelColor: "#39ff14",
     label: "+2",
-  },
-  {
-    name: "red",
-    color: "#fa417a",
-    shadow: "#fa296677",
-    head: "#380914",
-    eyes: "#f4f14f",
-    speed: 2.8,
-    w: 27,
-    h: 46,
-    coins: -1,
-    labelColor: "#df145f",
-    label: "-1",
   }
 ];
 
@@ -375,7 +365,7 @@ class GameWorld {
     this.playerVelocityY = 0;
     this.playerIsJumping = false;
 
-    // spawn initial zombies (randomized types)
+    // spawn initial zombies (all green zombies)
     for (let i = 0; i < this.zombiesToJuice; ++i) {
       this.zombies.push(this._spawnZombie(400+i*90+Math.random()*90));
     }
@@ -428,7 +418,7 @@ class GameWorld {
     }
     if (this.player.shootCooldown > 0) this.player.shootCooldown -= 1;
 
-    // Bullets logic (now awards coins by zombie type, shows floating label)
+    // Bullets logic (awards coins and shows floating label, only green zombie effect now)
     this.bullets.forEach((b,i,arr) => {
       b.x += b.vx;
       // Collide with zombies
@@ -438,17 +428,17 @@ class GameWorld {
           z._diedAt = Date.now();
           z._killedBy = 'bullet';
           this.zombiesJuiced += 1;
-          this.coins += z.coins;
+          this.coins += z.coins; // always +2
           this.score += 100;
           arr[i]._hit = true;
-          // Floating coin/score label
+          // Floating coin/score label (always "+2" in neon green)
           this.effects.push({
             type: 'label',
             x: z.x + z.w/2,
             y: z.y - 13,
             t: 0,
-            text: z.label,
-            fill: z.labelColor,
+            text: "+2",
+            fill: "#39ff14",
             outline: "#1a1a1a",
           });
           // Juicing visual effect
@@ -659,15 +649,16 @@ class GameWorld {
     });
   }
 
-  // Spawn zombie helper: randomize type
+  // Spawn zombie helper: only green zombies now
   _spawnZombie(x) {
-    const type = zombieTypes[Math.random()<0.38 ? 1 : 0];
+    // Only green zombies exist
+    const type = zombieTypes[0];
     return {
       x,
       y: this.groundY - type.h + 8,
       w: type.w,
       h: type.h,
-      speed: type.speed + Math.random()*0.45,
+      speed: type.speed + Math.random() * 0.45,
       dead: false,
       _falling: false,
       type: type.name,
@@ -774,12 +765,8 @@ class GameWorld {
     ctx.save();
     ctx.beginPath();
     ctx.roundRect(-z.w/2, 0, z.w, z.h, Math.max(8,Math.min(16,Math.round(z.w/4))));
-    ctx.fillStyle = z.dead
-      ? (z.type==='red' ? "#94434b" : "#3ba04e")
-      : z.color;
-    ctx.shadowColor = z.dead
-      ? (z.type==='red' ? "#df145f70" : "#37c84666")
-      : z.shadow;
+    ctx.fillStyle = z.dead ? "#3ba04e" : z.color;
+    ctx.shadowColor = z.dead ? "#37c84666" : z.shadow;
     ctx.shadowBlur = z.dead ? 3 : 17;
     ctx.globalAlpha = z.dead ? 0.65 : 1;
     ctx.fill();
@@ -790,7 +777,7 @@ class GameWorld {
     ctx.beginPath();
     ctx.ellipse(0, -10, Math.max(10, z.w/2), Math.max(7,z.w/2.7), 0, 0, Math.PI * 2);
     ctx.fillStyle = z.head;
-    ctx.shadowColor = z.type === "red" ? "#df145f" : "#39ff14";
+    ctx.shadowColor = "#39ff14";
     ctx.shadowBlur = 6;
     ctx.fill();
     ctx.restore();
@@ -799,10 +786,10 @@ class GameWorld {
     ctx.save();
     ctx.globalAlpha = z.dead ? 0.33 : 1;
     ctx.beginPath();
-    ctx.arc(-7, -12, z.type==='red'?2:3, 0, Math.PI*2);
-    ctx.arc(+7, -12, z.type==='red'?2:3, 0, Math.PI*2);
+    ctx.arc(-7, -12, 3, 0, Math.PI*2);
+    ctx.arc(+7, -12, 3, 0, Math.PI*2);
     ctx.fillStyle = z.eyes;
-    ctx.shadowColor = z.type === "red" ? "#fff01e" : "#aa2c69";
+    ctx.shadowColor = "#aa2c69";
     ctx.shadowBlur = 8;
     ctx.fill();
     ctx.restore();
@@ -810,7 +797,7 @@ class GameWorld {
     // Mouth
     ctx.save();
     ctx.beginPath();
-    ctx.arc(0, -3, z.type==='red'?5:8, 0, Math.PI, false);
+    ctx.arc(0, -3, 8, 0, Math.PI, false);
     ctx.lineWidth = 2;
     ctx.strokeStyle = "#aa2c69";
     ctx.stroke();
