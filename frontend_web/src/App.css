@@ -64,8 +64,9 @@ html, body, #root, .neon-app-root {
   display: flex; align-items: center;
 }
 .hud-label.coins { color: var(--neon-accent);}
-.hud-label.ammo { color: #fff;}
-.zombie-icon, .coin-icon, .ammo-icon {
+/* .hud-label.ammo { color: #fff;} */
+/* .ammo-icon removed: infinite ammo, no display */
+.zombie-icon, .coin-icon {
   display: inline-block;
   vertical-align: middle;
   margin-right: 6px;
@@ -83,14 +84,7 @@ html, body, #root, .neon-app-root {
   box-shadow: 0 0 8px #f3f14b77;
   border: 1.5px solid #7d6c28;
 }
-.ammo-icon {
-  width: 12px; height: 14px;
-  background: linear-gradient(90deg,#fff,#aa2c69 80%);
-  margin-bottom:-2px;
-  border-radius: 2px;
-  border: 1px solid #7e445e;
-  box-shadow: 0 0 7px #aa2c693c;
-}
+/* .ammo-icon styles removed for infinite ammo */
 
 .juice-meter-bg {
   width: 120px; height: 18px;

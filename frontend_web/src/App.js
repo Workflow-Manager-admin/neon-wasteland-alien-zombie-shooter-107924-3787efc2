@@ -31,7 +31,7 @@ function App() {
   // Game state hooks
   const [gameState, setGameState] = useState('menu'); // menu | running | paused | over | complete
   const [hud, setHud] = useState({
-    score: 0, coins: 0, juice: 0, ammo: 6, level: 1, zombies: 0,
+    score: 0, coins: 0, juice: 0, level: 1, zombies: 0, // removed ammo
   });
   // For control state and canvas focus
   const [control, setControl] = useState({ left: false, right: false, shoot: false, jump: false });
@@ -173,7 +173,7 @@ function App() {
       </div>
       <div className="hud-right">
         <div className="hud-label coins"><span className="coin-icon"/> {hud.coins}</div>
-        <div className="hud-label ammo"><span className="ammo-icon"/> {hud.ammo}</div>
+        {/* Removed ammo HUD */}
       </div>
     </div>
   );
@@ -289,7 +289,7 @@ class GameWorld {
     this.scrollX = 0;
     this.score = 0;
     this.coins = 0;
-    this.ammo = 6;
+    // this.ammo = 6; // Unlimited ammo—removed
     this.zombies = [];
     this.bullets = [];
     this.effects = [];
@@ -369,9 +369,9 @@ class GameWorld {
     }
 
     // Shooting
-    if (control.shoot && this.player.shootCooldown <= 0 && this.ammo > 0) {
+    if (control.shoot && this.player.shootCooldown <= 0) {
       this._shoot();
-      this.ammo -= 1;
+      // No ammo decrement
       this.player.shootCooldown = 16; // frames delay
       this.effects.push({type:'muzzle', x:this.player.x+this.player.dir*30, y:this.player.y+32, t:0});
     }
@@ -424,23 +424,7 @@ class GameWorld {
       }
     }
 
-    // Ammo pickup
-    if (this.ammo <= 0 && this.effects.find(e => e.type==='ammo') == null) {
-      this.effects.push({type:'ammo',x:this.player.x+80, y:this.groundY-64, t:0});
-    }
-
-    // Collect ammo
-    for (let i=this.effects.length-1; i>=0; --i) {
-      let e = this.effects[i];
-      if (e.type === 'ammo') {
-        if (Math.abs(this.player.x - e.x) < 32 && Math.abs(this.player.y - e.y) < 48) {
-          this.ammo = 6;
-          this.effects.splice(i,1);
-        }
-        e.t += 1;
-        if (e.t > 500) this.effects.splice(i,1); // despawn
-      }
-    }
+    // Ammo mechanics removed for unlimited bullets!
 
     // Particle effects update
     for (let e of this.effects) {
@@ -464,6 +448,8 @@ class GameWorld {
     // HUD update
     this.onHUD && this.onHUD(this.getHUD());
   }
+
+  // No ammo pickups or related effects emitted
 
   // PUBLIC_INTERFACE
   draw(canvas) {
@@ -582,7 +568,7 @@ class GameWorld {
       score: this.score,
       coins: this.coins,
       juice: this.zombiesJuiced,
-      ammo: this.ammo,
+      // ammo: this.ammo, // removed
       zombies: this.zombiesJuiced,
     };
   }
