@@ -140,17 +140,33 @@ function App() {
       );
     }
     if (gameState === 'complete') {
+      // Enhanced overlay with JuiceMachine logic:
+      // - Make Zombie Juice button triggers juicing animation
+      // - After 1.6s, award coins, reset zombiesCollected, update coin HUD, show floating '+X coins', and set for next level
+      const handleJuiceAward = (coinsAwarded) => {
+        // Update coins by awarded amount, reset zombies count
+        setHud(hudPrev => ({
+          ...hudPrev,
+          coins: hudPrev.coins + coinsAwarded,
+          zombies: 0, // all juiced!
+        }));
+      };
+      // After animation, this callback triggers next level (proceed)
+      const handleJuicingDone = () => {
+        startGame();
+      };
+
       return (
         <div className="game-overlay">
           <div className="juice-ready">JUICE READY!</div>
-          {/* Integrate JuiceMachine for juicing animation */}
           <JuiceMachine
             zombieCount={hud.zombies}
-            onDone={startGame}
+            onAward={handleJuiceAward}
+            initialCoins={hud.coins}
+            onDone={handleJuicingDone}
           />
           <div className="big-score neon-text">Zombies Juiced: {hud.zombies}</div>
           <div className="coins neon-glow">Coins: <span>{hud.coins}</span></div>
-          {/* 'Next Level' button is handled by JuiceMachine juicing */}
         </div>
       );
     }
@@ -178,8 +194,8 @@ function App() {
         <div className="hud-title">LEVEL {hud.level}</div>
       </div>
       <div className="hud-right">
+        {/* Coins display is always current */}
         <div className="hud-label coins"><span className="coin-icon"/> {hud.coins}</div>
-        {/* Removed ammo HUD */}
       </div>
     </div>
   );
