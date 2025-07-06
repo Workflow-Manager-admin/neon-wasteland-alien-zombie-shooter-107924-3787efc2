@@ -11,6 +11,11 @@ import "./JuiceMachine.css";
  *   - initialCoins: current coin count to show in HUD-style overlay, always kept in sync by parent
  */
 function JuiceMachine({ zombieCount, onAward, initialCoins, onDone }) {
+  // DEBUG: log prop at every mount/update
+  useEffect(() => {
+    // eslint-disable-next-line
+    console.debug("[JuiceMachine] zombieCount prop =", zombieCount, "initialCoins =", initialCoins);
+  }, [zombieCount, initialCoins]);
   // Animation state for juicing
   const [juicing, setJuicing] = useState(false);
 

@@ -175,15 +175,27 @@ function App() {
     }
 
     if (gameState === 'complete' && pendingJuicing) {
+      // DEBUG: Log Overlay state at every render for diagnosis
+      // eslint-disable-next-line
+      console.debug("[Overlay/JuiceMachine] state: hud.zombies =", hud.zombies, "hud.coins =", hud.coins, "payout =", payout, "hud object:", hud);
+
       const handleJuiceAward = (coinsAwarded) => {
         setPayout(coinsAwarded);
-        setHud(hudPrev => ({
-          ...hudPrev,
-          coins: hudPrev.coins + coinsAwarded,
-          zombies: 0,
-        }));
+        setHud(hudPrev => {
+          // Explicitly set zombies count to zero so prop is correct for JuiceMachine and Overlay immediately
+          return {
+            ...hudPrev,
+            coins: hudPrev.coins + coinsAwarded,
+            zombies: 0,
+          }
+        });
       };
       const handleJuicingDone = () => {
+        // On animation done: also double-clear zombies from HUD to prevent possible ghost value
+        setHud(hudPrev => ({
+          ...hudPrev,
+          zombies: 0,
+        }));
         setTimeout(() => {
           setPendingJuicing(false);
           setPayout(0);
