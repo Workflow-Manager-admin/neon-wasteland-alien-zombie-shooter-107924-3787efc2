@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import './App.css';
+import JuiceMachine from './JuiceMachine';
 
 // Neon theme variables
 const THEME = {
@@ -142,9 +143,14 @@ function App() {
       return (
         <div className="game-overlay">
           <div className="juice-ready">JUICE READY!</div>
+          {/* Integrate JuiceMachine for juicing animation */}
+          <JuiceMachine
+            zombieCount={hud.zombies}
+            onDone={startGame}
+          />
           <div className="big-score neon-text">Zombies Juiced: {hud.zombies}</div>
           <div className="coins neon-glow">Coins: <span>{hud.coins}</span></div>
-          <button className="neon-btn" onClick={startGame}>Next Level</button>
+          {/* 'Next Level' button is handled by JuiceMachine juicing */}
         </div>
       );
     }

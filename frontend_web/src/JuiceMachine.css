@@ -1,0 +1,169 @@
+.juicemachine-root {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 32px;
+  min-height: 290px;
+  padding-top: 12px;
+}
+
+.jm-machine {
+  position: relative;
+  width: 180px;
+  margin: 0 auto;
+  background: none;
+  padding: 12px 0 36px 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Plunger */
+.jm-plunger {
+  position: absolute;
+  left: 50%;
+  top: 10px;
+  width: 38px;
+  height: 44px;
+  transform: translateX(-50%);
+  border-radius: 13px 13px 10px 10px / 18px 18px 18px 18px;
+  background: linear-gradient(180deg, #2d3234 54%, #1a1a1a 80%);
+  box-shadow: 0 2px 15px 0 #0fa50334, 0 1px 0 #39ff1450 inset;
+  border: 2.5px solid var(--neon-primary, #39ff14);
+  z-index: 30;
+  transition: top 0.23s cubic-bezier(.44,.06,.62,1.09);
+}
+.juicing .jm-plunger {
+  top: 43px;
+  transition: top 0.37s cubic-bezier(.44,.06,.62,1.09);
+}
+
+/* Zombie blocks */
+.jm-zombie-stack {
+  position: relative;
+  width: 70px;
+  height: 125px;
+  min-height: 25px;
+  margin: 46px auto 5px auto;
+  z-index: 10;
+}
+
+.jm-zombie {
+  position: absolute;
+  left: 0; bottom: 0;
+  width: 40px; height: 25px;
+  border-radius: 10px;
+  background: linear-gradient(120deg,#39ff14 57%,#6efd9a 100%);
+  box-shadow: 0 0 6px #39ff14a0, 0 2px 8px #31c92744 inset;
+  border: 1.8px solid #23243a;
+  opacity: 1;
+  transition: filter 0.08s, opacity 0.20s;
+  animation: none;
+  transition: transform 0.2s, opacity 0.16s;
+}
+
+.juicing .jm-zombie {
+  animation: jm-zombie-drop 1.17s cubic-bezier(.36,.72,.56,1) forwards;
+}
+@keyframes jm-zombie-drop {
+  0%   { transform: translateY(0) scale(1); opacity: 1;}
+  45%  { transform: translateY(18px) scale(0.91); opacity: 0.97;}
+  72%  { transform: translateY(42px) scale(0.7); opacity: 0.89;}
+  86%  { transform: translateY(78px) scale(0.3,1.1); opacity: .52;}
+  100% { transform: translateY(120px) scale(0.1,0.5); opacity: 0; }
+}
+
+/* Zombie Head/Face details */
+.jm-zombie-head {
+  position: absolute;
+  left: 10px; top: -11px;
+  width: 20px; height: 18px;
+  background: #161e13;
+  border-radius: 7px 7px 14px 14px;
+  box-shadow: 0 1px 7px #39ff1454 inset;
+}
+.jm-zombie-eye {
+  position: absolute; top: -5px; width: 5px; height: 6px;
+  background: #fb73fa;
+  border-radius: 55% 65% 50% 90%;
+  box-shadow: 0 0 6px #aa2c6987 inset, 0 0 4px #aa2c69b8;
+}
+.jm-zombie-eye-l { left: 13px;}
+.jm-zombie-eye-r { left: 21px;}
+.jm-zombie-mouth {
+  position: absolute; top: 7px; left: 15.5px;
+  width: 8px; height: 4px;
+  border-bottom: 2px solid #aa2c69;
+  border-radius: 0 0 8px 8px;
+}
+
+/* Bottle & juice */
+.jm-bottle {
+  position: absolute;
+  left: 50%; top: 83px;
+  width: 52px; height: 90px;
+  transform: translateX(-50%);
+  z-index: 3;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+}
+.jm-bottle-outline {
+  position: absolute;
+  left: 0; bottom: 0;
+  width: 52px; height: 90px;
+  border-radius: 18px 18px 19px 19px / 23px 23px 49px 49px;
+  border: 3px solid var(--neon-accent, #aa2c69);
+  pointer-events:none;
+  box-shadow: 0 0 15px #aa2c6940;
+}
+
+.jm-bottle-glow {
+  position: absolute;
+  left: 6px; bottom: 14px;
+  width: 40px; height: 45px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at 50% 32%,#39ff1440,transparent 80%);
+  pointer-events: none;
+}
+
+.jm-juice {
+  position: absolute;
+  left: 7.5px;
+  bottom: 7.5px;
+  width: 37px;
+  background: linear-gradient(90deg,#6efd9a 7%,#39ff14 85%);
+  box-shadow: 0 0 18px 5px #39ff1469, 0 0 60px 29px #39ff1417 inset;
+  border-radius: 0 0 18px 18px;
+  transition: height 0.35s cubic-bezier(.14,.76,.48,1.07), background 0.51s;
+  z-index: 5;
+  height: 0;
+}
+.juicing .jm-juice {
+  height: 86px !important;
+  background: linear-gradient(90deg,#39ff14 45%,#6efd9a 80%);
+  animation: jm-bottle-fill .83s 0.46s cubic-bezier(.42,1.05,.58,1.02) forwards;
+}
+@keyframes jm-bottle-fill {
+  0%   { height: 0;}
+  38%  { height: 20px;}
+  64%  { height: 65px;}
+  100% { height: 86px;}
+}
+
+/* Neon button tweaks for context */
+.jm-btn {
+  font-size: 1em;
+  margin-top: 114px;
+  margin-bottom: 4px;
+  padding: 0.55em 1.6em;
+  z-index: 30;
+}
+.jm-btn:disabled {
+  opacity: 0.66;
+  filter: grayscale(0.45);
+  cursor: not-allowed;
+}
+
+@media (max-width: 600px) {
+  .jm-machine { width: 99vw; padding-left:0; padding-right:0;}
+}
