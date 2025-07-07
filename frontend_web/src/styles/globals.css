@@ -58,7 +58,6 @@ html, body, #root, .neon-app-root {
 .game-canvas-container {
   width: 95vw;
   height: 90vh;
-  max-width: 99vw;
   margin: 58px auto 0 auto;  /* top margin for fixed hud */
   position: relative;
   background: #23243a;
@@ -70,12 +69,11 @@ html, body, #root, .neon-app-root {
   align-items: center;
   justify-content: center;
 }
+
 canvas#game-canvas {
   display: block;
   width: 100%;
   height: 100%;
-  max-width: 99vw;
-  max-height: 89vh;
   border-radius: var(--border-radius);
   box-shadow: 0 0 40px 8px #39ff142c;
   background: #191925;
