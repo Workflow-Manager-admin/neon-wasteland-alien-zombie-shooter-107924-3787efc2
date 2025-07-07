@@ -38,10 +38,17 @@ const getDims = () =>{
 export default function Game(){
   console.log("[Game.jsx] FUNCTION BODY RUNS");
 
+  // Add logging to monitor gameState changes and rendering
+  useEffect(() => {
+    console.log(`[Game.jsx] gameState changed -->`, gameState);
+  }, [gameState]);
+
   /* Insert debug log at top of startGame() */
   function startGame() {
-    console.log('🎮 Game Started');
-    // original start/reset logic goes here if/when present
+    console.log('🎮 Game Started (startGame called!)');
+    // Will update game state to "play"
+    setGS("play");
+    // Optionally, you could also call reset() here if the correct effect is to start from a clean state.
   }
 
   /* ─── state ─── */
@@ -259,7 +266,14 @@ export default function Game(){
         { gameState==="menu" &&
           <div className="game-overlay">
             <h1 className="neon-title">SYNTH ZOMBIE SHOOTER</h1>
-            <button className="neon-btn" onClick={()=>{reset();setGS("play")}}>Start Game</button>
+            <button
+              className="neon-btn"
+              onClick={() => {
+                console.log("[Game.jsx] Start Game clicked");
+                startGame();
+              }}
+              autoFocus
+            >Start Game</button>
             <button className="neon-btn neon-btn-accent" onClick={()=>setShowLB(true)}>Leaderboard</button>
           </div>
         }
