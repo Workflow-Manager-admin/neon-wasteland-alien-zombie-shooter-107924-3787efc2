@@ -187,16 +187,15 @@ function App() {
       console.debug("[Overlay/JuiceMachine] state: hud.zombies =", hud.zombies, "hud.coins =", hud.coins, "payout =", payout, "hud object:", hud, "pendingJuicing =", pendingJuicing);
 
 
+      // Award payout when JuiceMachine triggers onAward (after bottle fill).
       const handleJuiceAward = (coinsAwarded) => {
-        // If zombie count is already zero, skip mutation for safety
         setPayout(coinsAwarded);
         setHud(hudPrev => {
+          // Prevent race: don't deduct zombies twice if already zero.
           if (hudPrev.zombies === 0) {
-            // eslint-disable-next-line
-            console.debug("[handleJuiceAward] Avoid double-zeroing, current zombies=0");
             return { ...hudPrev, coins: hudPrev.coins + coinsAwarded };
           }
-          // Explicitly set zombies count to zero so prop is correct for JuiceMachine and Overlay immediately
+          // Set zombies count to zero as JuiceMachine has processed the batch.
           return {
             ...hudPrev,
             coins: hudPrev.coins + coinsAwarded,
@@ -204,21 +203,18 @@ function App() {
           }
         });
       };
+
+      // Once the animation/payout sequence finishes, cleanup and restart game after short delay.
       const handleJuicingDone = () => {
-        // Only clear zombies if not already cleared, to prevent race condition
         setHud(hudPrev => {
-          if (hudPrev.zombies === 0) {
-            // eslint-disable-next-line
-            console.debug("[handleJuicingDone] zombies already zero, skip re-zero");
-            return hudPrev;
-          }
+          if (hudPrev.zombies === 0) return hudPrev;
           return { ...hudPrev, zombies: 0 };
         });
         setTimeout(() => {
           setPendingJuicing(false);
           setPayout(0);
           startGame();
-        }, 1600); // 1.6s matches animation after payout
+        }, 1600); // Match juice bottle anim
       };
 
       return (

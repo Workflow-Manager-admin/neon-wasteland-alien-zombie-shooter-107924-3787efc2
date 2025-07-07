@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import "./JuiceMachine.css";
 
 /**
@@ -6,16 +6,13 @@ import "./JuiceMachine.css";
  * JuiceMachine animates the juicing of collected green zombies and handles reward payout and animation sequencing.
  * Props:
  *   - zombieCount (number): the number of zombies available to juice (must be >= 0)
- *   - coinValue (number): the number of coins awarded per zombie. (default: 2)
+ *   - coinValue (number): coins per zombie (default: 2)
  *   - initialCoins (number): displayed coin count (passed by parent/HUD, NOT mutated here)
  *   - onAward (function): called as onAward(coinsAwarded) at the coin payout moment, to let parent update state
  *   - onDone (function): called at end of full sequence (after coin float/anim)
  *
- * Requirements:
- * - Only green zombies supported (remove any red/etc from visual/logic)
- * - Sequential drop animation for zombies, then plunger presses down, then bottle fills, then coins are awarded.
- * - "+X coins" float anim occurs after bottle fill, before onDone fired.
- * - Visible at all times for zombieCount > 0. Juice button enabled only if zombieCount > 0 and not already juicing.
+ * Now, the juicing sequence starts automatically as a side effect of zombieCount > 0 (and not already juicing).
+ * All logic for a manual button or handler has been removed.
  */
 function JuiceMachine({
   zombieCount = 0,
@@ -34,12 +31,15 @@ function JuiceMachine({
   const [coinGain, setCoinGain] = useState(0);
   const [localCoins, setLocalCoins] = useState(initialCoins);
 
+  // Ensure sequence doesn't double-trigger during zombieCount transitions
+  const prevZombieCount = useRef(zombieCount);
+
   // Sync local coins to HUD
   useEffect(() => {
     setLocalCoins(initialCoins);
   }, [initialCoins]);
 
-  // Reset internal anim state if zombieCount changes (e.g. on overlay re-show)
+  // Reset entire animation state (gets run on every change of zombieCount)
   useEffect(() => {
     setAnimStep("idle");
     setJuicing(false);
@@ -48,55 +48,47 @@ function JuiceMachine({
     setBottleJuice(0);
     setShowCoinGain(false);
     setCoinGain(0);
+    prevZombieCount.current = zombieCount;
   }, [zombieCount]);
 
-  // Animation sequence controller
+  // Animation sequence controller (unchanged from manual, just always triggers auto on eligible conditions)
   const runJuiceSequence = useCallback(() => {
-    if (juicing) return;
+    if (juicing || zombieCount < 1 || !Number.isFinite(zombieCount)) return;
     setJuicing(true);
-    // 1. Staggered drops (one per zombie, e.g. 110ms per zombie)
     setAnimStep("drops");
-    let stepTimer = 0;
     let dropStagger = 115;
-    if (zombieCount === 0) {
-      setAnimStep("idle");
-      setJuicing(false);
-      return;
-    }
-    // Reveal zombies stack one by one
+    let dropTimers = [];
     for (let i = 0; i < zombieCount; ++i) {
-      setTimeout(() => {
-        setRevealZombies(revealZ => [...revealZ, i]);
-      }, stepTimer + dropStagger * i);
+      dropTimers.push(
+        setTimeout(() => {
+          setRevealZombies(revealZ => [...revealZ, i]);
+        }, dropStagger * i)
+      );
     }
-    // After drops, run plunger
     let dropsDuration = zombieCount * dropStagger + 70;
-    setTimeout(() => {
+    let plungerTimer = setTimeout(() => {
       setAnimStep("plunger");
       setShowPlunger(true);
     }, dropsDuration);
-    // After plunger presses, run bottle fill
+
     let plungerDuration = 460;
-    setTimeout(() => {
+    let fillTimer = setTimeout(() => {
       setAnimStep("fill");
       setBottleJuice(1);
       setShowPlunger(false);
     }, dropsDuration + plungerDuration);
 
-    // After fill, float coins, award (staggered for clarity)
     let fillDuration = 830;
-    setTimeout(() => {
+    let payoutTimer = setTimeout(() => {
       setAnimStep("payout");
       setCoinGain(zombieCount * coinValue);
       setShowCoinGain(true);
       setLocalCoins(c => c + zombieCount * coinValue);
-      // Callback: award coins, let parent update HUD
       if (onAward) onAward(zombieCount * coinValue);
     }, dropsDuration + plungerDuration + fillDuration);
 
-    // Delay before onDone, after coin float
     let coinFloatDuration = 1300;
-    setTimeout(() => {
+    let doneTimer = setTimeout(() => {
       setAnimStep("done");
       setShowCoinGain(false);
       setRevealZombies([]); // hide stack
@@ -104,9 +96,14 @@ function JuiceMachine({
       setJuicing(false);
       if (onDone) onDone();
     }, dropsDuration + plungerDuration + fillDuration + coinFloatDuration);
+
+    // Cleanup (optional): save timers for cleanup in useEffect if zombieCount resets mid-sequence.
+    return () => {
+      [...dropTimers, plungerTimer, fillTimer, payoutTimer, doneTimer].forEach(clearTimeout);
+    };
   }, [juicing, zombieCount, coinValue, onAward, onDone]);
 
-  // Floating coin gain keyframes patch (inserts in head if missing)
+  // Patch keyframes for coin float up if not present
   useEffect(() => {
     if (!document.getElementById("coin-float-up-keyframes")) {
       const style = document.createElement("style");
@@ -125,16 +122,15 @@ function JuiceMachine({
     }
   }, []);
 
-  // Button handler
-  function handleJuice() {
-    if (
-      juicing ||
-      zombieCount < 1 ||
-      !Number.isFinite(zombieCount)
-    )
-      return;
-    runJuiceSequence();
-  }
+  // EFFECT: Whenever zombieCount > 0 and not already juicing, start the juice sequence automatically.
+  useEffect(() => {
+    // Sequence should start only if not running and there are zombies to juice.
+    if (zombieCount > 0 && !juicing) {
+      runJuiceSequence();
+    }
+    // If zombieCount resets, cleanup possible running timers (handled above).
+    // eslint-disable-next-line
+  }, [zombieCount, juicing, runJuiceSequence]);
 
   // Build zombie stack for animation
   const zombieBlocks = [];
@@ -171,7 +167,7 @@ function JuiceMachine({
     );
   }
 
-  // Coin gain float component
+  // Coin gain float
   const CoinGain = () =>
     showCoinGain ? (
       <div
@@ -213,13 +209,6 @@ function JuiceMachine({
   const juiceHeight =
     bottleJuice === 0 ? 0 : Math.min(zombieCount * 17, 86) * bottleJuice;
 
-  // By requirements: button only enabled if zombieCount > 0 and not juicing
-  const btnDisabled =
-    !Number.isFinite(zombieCount) ||
-    zombieCount < 1 ||
-    juicing ||
-    animStep !== "idle";
-
   return (
     <div
       className="juicemachine-root"
@@ -254,23 +243,7 @@ function JuiceMachine({
           />
           <div className="jm-bottle-outline"></div>
         </div>
-        {/* Make Zombie Juice Button */}
-        <button
-          className="neon-btn jm-btn"
-          disabled={btnDisabled}
-          onClick={handleJuice}
-          aria-busy={juicing ? "true" : undefined}
-          tabIndex={btnDisabled ? -1 : 0}
-          style={{
-            cursor: btnDisabled ? "not-allowed" : "pointer",
-            pointerEvents: btnDisabled ? "none" : "auto",
-            opacity: btnDisabled ? 0.66 : 1,
-            filter: btnDisabled ? "grayscale(0.45)" : "none"
-          }}
-        >
-          {juicing ? "Juicing..." : "Make Zombie Juice"}
-        </button>
-        {/* Coins and floating gain */}
+        {/* Coin counter and floating gain */}
         <div
           style={{
             marginTop: 26,
