@@ -2,23 +2,49 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin-bottom: 32px;
-  min-height: 290px;
-  padding-top: 12px;
+  justify-content: center;
+  min-height: 390px;
+  min-width: 220px;
+  width: 100%;
+  padding: 32px 0 36px 0;
+  margin: 0 auto 34px auto;
+  box-sizing: border-box;
   pointer-events: auto !important;
+  overflow: visible;
 }
 
-.jm-machine {
-  position: relative;
-  width: 180px;
-  margin: 0 auto;
-  background: none;
-  padding: 12px 0 36px 0;
-  z-index: 2;
+.juicemachine-scroll-wrapper {
+  width: 100%;
+  max-width: 440px;
+  min-height: 350px;
+  max-height: 92vh;
+  overflow-y: auto;
+  overflow-x: visible;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
+  /* Avoids edge-to-edge on mobile overlays */
+  padding: 12px 12px 20px 12px;
+  box-sizing: border-box;
+}
+
+
+.jm-machine {
+  position: relative;
+  width: 220px;
+  max-width: 96vw;
+  min-width: 170px;
+  margin: 0 auto;
+  background: none;
+  padding: 26px 0 46px 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
   pointer-events: auto !important;
+  box-sizing: border-box;
 }
 /* For .jm-plunger-down: plunger triggers press for animation hook */
 .jm-plunger {
@@ -58,10 +84,20 @@
 .jm-zombie-stack {
   position: relative;
   width: 70px;
-  height: 125px;
-  min-height: 25px;
-  margin: 46px auto 5px auto;
-  z-index: 10;
+  min-width: 62px;
+  height: auto;
+  min-height: 125px;
+  max-height: 240px;
+  padding-top: 1.5vw;
+  margin: 60px auto 18px auto;
+  z-index: 15;
+  display: flex;
+  flex-direction: column-reverse;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  overflow-x: visible;
+  overflow-y: visible;
 }
 
 .jm-zombie {
@@ -116,11 +152,19 @@
 /* Bottle & juice */
 .jm-bottle {
   position: absolute;
-  left: 50%; top: 83px;
-  width: 52px; height: 90px;
+  left: 50%; top: 97px;
+  width: 56px;
+  height: 95px;
+  min-height: 92px;
+  max-width: 99vw;
   transform: translateX(-50%);
-  z-index: 3;
-  display: flex; flex-direction: column; align-items: center; justify-content: flex-end;
+  margin-top: 0;
+  z-index: 13;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  pointer-events: none;
 }
 .jm-bottle-outline {
   position: absolute;
@@ -168,8 +212,8 @@
 /* Neon button tweaks for context */
 .jm-btn {
   font-size: 1em;
-  margin-top: 114px;
-  margin-bottom: 4px;
+  margin-top: 125px;
+  margin-bottom: 6px;
   padding: 0.55em 1.6em;
   z-index: 30;
   opacity: 1;
@@ -180,6 +224,19 @@
 }
 .jm-btn:focus {
   outline: 2px solid var(--neon-primary,#39ff14);
+}
+.jm-coincount-area {
+  margin-top: 38px;
+  margin-bottom: 3px;
+  width: 100%;
+  max-width: 99vw;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  padding-left: 14px;
+  padding-right: 14px;
+  box-sizing: border-box;
 }
 /* Only disable pointer-events when actually disabled.
    enabled buttons always preserve pointer-events and pointer cursor. */
@@ -199,6 +256,69 @@ button.jm-btn:not(:disabled) {
   cursor: pointer !important;
 }
 
-@media (max-width: 600px) {
-  .jm-machine { width: 99vw; padding-left:0; padding-right:0;}
+@media (max-width: 900px) {
+  .juicemachine-root {
+    min-height: 255px;
+    padding-top: 15px;
+    padding-bottom: 24px;
+  }
+  .juicemachine-scroll-wrapper { max-width: 99vw; padding: 10px 1vw 21px 1vw; max-height: 74vh;}
+  .jm-machine {
+    width: 97vw !important;
+    min-width: 0;
+    padding-left:0.5vw;
+    padding-right:0.5vw;
+  }
+  .jm-zombie-stack {
+    margin-top: 41px;
+    margin-bottom: 7px;
+    height: auto;
+    min-height: 100px;
+    max-height: 190px;
+  }
+  .jm-btn { margin-top: 60px; }
+}
+
+@media (max-width: 550px) {
+  .juicemachine-root {
+    padding-top: 9px;
+    min-height: 222px;
+  }
+  .juicemachine-scroll-wrapper {
+    padding: 5px 0 18px 0;
+    max-height: 92vw;
+  }
+  .jm-machine {
+    width: 99vw !important;
+    min-width: 132px;
+    padding-left:0; padding-right:0;
+  }
+  .jm-zombie-stack {
+    min-width: 37vw;
+    min-height: 70px;
+    max-height: 140px;
+    margin-bottom: 4vw;
+    margin-top: 15vw;
+  }
+  .jm-bottle { width: 52px!important;}
+  .jm-coincount-area { padding: 2px 1vw;}
+}
+
+@media (max-width: 420px) {
+  .juicemachine-root {
+    min-height: 189px;
+  }
+  .jm-machine { min-width: 0; width: 99vw!important; }
+  .jm-zombie-stack {
+    min-width: 27vw; max-width: 43vw; max-height: 90vw; margin-top: 9vw; margin-bottom: 2vw;
+  }
+  .jm-coincount-area { font-size: 0.97em; min-height: 26px;}
+}
+
+/* Allow scrolling inside juicemachine-scroll-wrapper for very small screens */
+@media (max-height: 445px), (max-width: 375px) {
+  .juicemachine-scroll-wrapper {
+    overflow-y: auto !important;
+    max-height: 72vw;
+  }
 }

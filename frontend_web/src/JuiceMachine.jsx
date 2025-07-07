@@ -214,66 +214,56 @@ function JuiceMachine({
       className="juicemachine-root"
       style={{ position: "relative", pointerEvents: "auto" }}
     >
-      <div
-        className={
-          "jm-machine" +
-          (juicing ? " juicing" : "") +
-          (showPlunger ? " jm-plunger-down" : "")
-        }
-        style={{
-          userSelect: "none",
-          pointerEvents: "auto"
-        }}
-      >
-        {/* Plunger */}
-        <div className="jm-plunger" style={showPlunger ? { top: "43px", transition: "top 0.37s cubic-bezier(.44,.06,.62,1.09)" } : {}} />
-        {/* Zombie stack */}
-        <div className="jm-zombie-stack">{zombieBlocks}</div>
-        {/* Bottle with fill anim */}
-        <div className="jm-bottle">
-          <div className="jm-bottle-glow"></div>
-          <div
-            className="jm-juice"
-            style={{
-              height: `${juiceHeight}px`,
-              transition: `height 0.35s cubic-bezier(.14, .76, .48, 1.07)${
-                bottleJuice === 1 ? ", background 0.51s" : ""
-              }`
-            }}
-          />
-          <div className="jm-bottle-outline"></div>
-        </div>
-        {/* Coin counter and floating gain */}
+      <div className="juicemachine-scroll-wrapper">
         <div
+          className={
+            "jm-machine" +
+            (juicing ? " juicing" : "") +
+            (showPlunger ? " jm-plunger-down" : "")
+          }
           style={{
-            marginTop: 26,
-            fontSize: "1.13em",
-            color: "#ffef50",
-            textShadow:
-              "0 0 7px #fff944, 0 0 10px #aa2c69, 0 1px 2px #181925",
-            fontWeight: 700,
-            minHeight: 34,
-            letterSpacing: ".04em",
-            position: "relative"
+            userSelect: "none",
+            pointerEvents: "auto"
           }}
         >
-          <span
-            className="coin-icon"
-            style={{
-              width: 17,
-              height: 17,
-              display: "inline-block",
-              borderRadius: "50%",
-              verticalAlign: "middle",
-              marginRight: 4,
-              background:
-                "radial-gradient(ellipse at 60% 35%,#ffef50 90%,#aa2c69 130%)",
-              boxShadow: "0 0 8px #f3f14b77",
-              border: "1.5px solid #7d6c28"
-            }}
-          />{" "}
-          {localCoins}
-          <CoinGain />
+          {/* Plunger */}
+          <div className="jm-plunger" style={showPlunger ? { top: "43px", transition: "top 0.37s cubic-bezier(.44,.06,.62,1.09)" } : {}} />
+          {/* Zombie stack */}
+          <div className="jm-zombie-stack">{zombieBlocks}</div>
+          {/* Bottle with fill anim */}
+          <div className="jm-bottle">
+            <div className="jm-bottle-glow"></div>
+            <div
+              className="jm-juice"
+              style={{
+                height: `${juiceHeight}px`,
+                transition: `height 0.35s cubic-bezier(.14, .76, .48, 1.07)${
+                  bottleJuice === 1 ? ", background 0.51s" : ""
+                }`
+              }}
+            />
+            <div className="jm-bottle-outline"></div>
+          </div>
+          {/* Coin counter and floating gain */}
+          <div className="jm-coincount-area">
+            <span
+              className="coin-icon"
+              style={{
+                width: 17,
+                height: 17,
+                display: "inline-block",
+                borderRadius: "50%",
+                verticalAlign: "middle",
+                marginRight: 4,
+                background:
+                  "radial-gradient(ellipse at 60% 35%,#ffef50 90%,#aa2c69 130%)",
+                boxShadow: "0 0 8px #f3f14b77",
+                border: "1.5px solid #7d6c28"
+              }}
+            />{" "}
+            {localCoins}
+            <CoinGain />
+          </div>
         </div>
       </div>
     </div>
