@@ -20,8 +20,7 @@
   align-items: center;
   pointer-events: auto !important;
 }
-
-/* Plunger */
+/* For .jm-plunger-down: plunger triggers press for animation hook */
 .jm-plunger {
   position: absolute;
   left: 50%;
@@ -34,13 +33,27 @@
   box-shadow: 0 2px 15px 0 #0fa50334, 0 1px 0 #39ff1450 inset;
   border: 2.5px solid var(--neon-primary, #39ff14);
   z-index: 30;
-  transition: top 0.23s cubic-bezier(.44,.06,.62,1.09);
+  transition: top 0.28s cubic-bezier(.44,.06,.62,1.09);
 }
+.jm-plunger-down .jm-plunger,
 .juicing .jm-plunger {
   top: 43px;
   transition: top 0.37s cubic-bezier(.44,.06,.62,1.09);
 }
 
+/* For new sequential zombie drop: simply animate each jm-zombie as they appear */
+.jm-zombie-animating {
+  animation: jm-zombie-drop 1.17s cubic-bezier(.36,.72,.56,1) forwards !important;
+}
+
+/* Keyframes as previously, tuned for immediate drop-in display */
+@keyframes jm-zombie-drop {
+  0%   { transform: translateY(0) scale(1); opacity: 1;}
+  45%  { transform: translateY(18px) scale(0.91); opacity: 0.97;}
+  72%  { transform: translateY(42px) scale(0.7); opacity: 0.89;}
+  86%  { transform: translateY(78px) scale(0.3,1.1); opacity: .52;}
+  100% { transform: translateY(120px) scale(0.1,0.5); opacity: 0; }
+}
 /* Zombie blocks */
 .jm-zombie-stack {
   position: relative;

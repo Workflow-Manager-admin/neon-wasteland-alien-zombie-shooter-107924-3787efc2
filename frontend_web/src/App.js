@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import './App.css';
-import JuiceMachine from './JuiceMachine';
+import JuiceMachine from './JuiceMachine.jsx';
 
 // Neon theme variables
 const THEME = {
