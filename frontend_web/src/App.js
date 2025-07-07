@@ -47,13 +47,19 @@ const useAnimationFrame = (callback, isRunning = true) => {
   });
 };
 
-// PUBLIC_INTERFACE
+/**
+ * PUBLIC_INTERFACE
+ */
 function App() {
   // Game state hooks
   const [gameState, setGameState] = useState('menu'); // menu | running | paused | over | complete
   const [hud, setHud] = useState({
     score: 0, coins: 0, juice: 0, level: 1, zombies: 0,
   });
+
+  // New state: tracks how many zombies have ever been juiced in this session.
+  const [zombiesJuiced, setZombiesJuiced] = useState(0);
+
   // For control state and canvas focus
   const [control, setControl] = useState({ left: false, right: false, shoot: false, jump: false });
   const [mobile, setMobile] = useState(false);
@@ -190,6 +196,8 @@ function App() {
       // Award payout when JuiceMachine triggers onAward (after bottle fill).
       const handleJuiceAward = (coinsAwarded) => {
         setPayout(coinsAwarded);
+        // Also increment zombiesJuiced after payout by the number of juiced zombies:
+        setZombiesJuiced(prev => prev + hud.zombies);
         setHud(hudPrev => {
           // Prevent race: don't deduct zombies twice if already zero.
           if (hudPrev.zombies === 0) {
@@ -256,8 +264,18 @@ function App() {
       <div className="hud-center">
         <div className="hud-title">LEVEL {hud.level}</div>
       </div>
-      <div className="hud-right">
+      <div className="hud-right" style={{ flexDirection: "column", alignItems: "flex-end" }}>
         <div className="hud-label coins"><span className="coin-icon"/> {hud.coins}</div>
+        <p style={{
+            margin: "2px 0 0 0",
+            color: THEME.primary,
+            fontWeight: 600,
+            fontSize: "0.95em",
+            textShadow: "0 0 5px #39ff14c7",
+            letterSpacing: ".01em"
+        }}>
+          Zombies Juiced: {zombiesJuiced}
+        </p>
       </div>
     </div>
   );
