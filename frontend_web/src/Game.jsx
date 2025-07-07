@@ -2,6 +2,76 @@ import React, { useState, useEffect, useRef } from "react";
 import { saveHighscore } from "./supabaseClient";
 import Leaderboard from "./components/Leaderboard.jsx";
 
+/*
+SPRITE & ASSET INTEGRATION INSTRUCTIONS
+
+== Where to put asset files ==
+- Place all custom sprite/image files in: ./public/assets/
+- Asset file names must follow these safe conventions:
+  "player.png"      // main alien character (facing right, transparent BG)
+  "player_left.png" // main alien character (facing left), optional
+  "zombie.png"      // enemy: zombie (facing right—if side-on), or centered
+  "bird.png"        // enemy: bird, transparent BG
+  "bot.png"         // enemy: bot/robot, transparent BG
+  "bullet.png"      // neon bullet, transparent BG (optional)
+- PNG or SVG files are recommended (.png preferred for wide compatibility).
+- Filenames are *case-sensitive* (match above exactly).
+- For new/unique entities, use their "key" (e.g. "zombie.png", "bird.svg").
+
+== Notes ==
+- Assets are loaded from "/assets/<filename>" at runtime (i.e., yourapp.com/assets/zombie.png).
+- If an image or SVG is missing or fails to load, game will fall back to drawing a neon shape.
+- Optimal sprite size: width ≈ entity .w, height ≈ entity .h, with some transparent border for glow.
+
+== Responsive Design ==
+- Game layout and entity rendering are fully responsive.
+- Asset presence or loading failures will NOT break the visuals, only revert to neon shapes if missing.
+
+*/
+
+// ────── Image Asset Preload Logic ──────
+const ASSET_LIST = [
+  { key: 'player', files: ['player.png', 'player.svg'] },
+  { key: 'player_left', files: ['player_left.png', 'player_left.svg'] },
+  { key: 'zombie', files: ['zombie.png', 'zombie.svg'] },
+  { key: 'bird', files: ['bird.png', 'bird.svg'] },
+  { key: 'bot', files: ['bot.png', 'bot.svg'] },
+  { key: 'bullet', files: ['bullet.png', 'bullet.svg'] }
+];
+
+const assetImages = {}; // {key: HTMLImageElement | null}
+
+// This function preloads all listed images.
+// Run only once at module level.
+(function preloadSprites() {
+  ASSET_LIST.forEach(asset => {
+    let loaded = false;
+    for (const filename of asset.files) {
+      // Try PNG, then SVG for each key
+      const img = new window.Image();
+      img.src = `${process.env.PUBLIC_URL || ""}/assets/${filename}`;
+      // don't block just because first fails; listen for load/error
+      img.onload = () => {
+        if (!loaded) {
+          assetImages[asset.key] = img;
+          loaded = true;
+        }
+      };
+      img.onerror = () => {
+        // fallback to next file in list
+        if (!loaded && asset.files.indexOf(filename) === asset.files.length - 1) {
+          assetImages[asset.key] = null;
+        }
+      };
+      // If loaded immediately from cache
+      if (img.complete && img.naturalWidth > 0) {
+        assetImages[asset.key] = img;
+        loaded = true;
+      }
+    }
+    if (!loaded) assetImages[asset.key] = null;
+  });
+})();
 // ────────────── CONSTANTS AND THEME ──────────────
 const THEME = {
   primary: "#39ff14",
@@ -358,91 +428,152 @@ export default function Game() {
 
 // ──────────────────────────────────────────
 // DRAW HELPERS (NEON SHAPES & BACKGROUND)
-// ──────────────────────────────────────────
+/* -- Canvas Drawing Utilities: Responsive Images + Neon Fallbacks -- */
+
+// Neon synthwave background and scanlines
 function drawBG(ctx, w, h) {
-  // Vertical neon synthwave gradient
   const g = ctx.createLinearGradient(0, 0, 0, h);
   g.addColorStop(0, "#2b2870");
   g.addColorStop(0.66, "#141429");
   g.addColorStop(1, "#0b0b15");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, w, h);
-  // NEON scanlines
   ctx.globalAlpha = 0.09;
   ctx.fillStyle = SCANLINE_COLOR;
   for (let i = 0; i < h; i += 14) ctx.fillRect(0, i, w, 2);
   ctx.globalAlpha = 1.0;
 }
 
-// Draw player as neon-glow synth cyborg alien (bottom center by y)
+// Player draw with asset fallback logic
 function drawPlayer(ctx, p, dims) {
-  // y = base of body
+  // If assets loaded, use drawImage, else fallback
+  const facing = p.dir === -1 && assetImages['player_left'] ? 'player_left' : 'player';
+  const img = assetImages[facing];
   ctx.save();
   ctx.translate(p.x, dims.height - 120);
-  // Body: magenta-glow rounded rectangle
-  ctx.shadowColor = "#9633f9";
-  ctx.shadowBlur = 16;
-  ctx.fillStyle = "#9633f9";
-  ctx.fillRect(-17, -43, 34, 46);
-  // Head: neon lime glow
-  ctx.shadowColor = "#39ff14";
-  ctx.shadowBlur = 19;
-  ctx.beginPath();
-  ctx.arc(0, -60, 18, 0, Math.PI * 2);
-  ctx.fillStyle = "#39ff14";
-  ctx.fill();
-  // Visor: accent
-  ctx.shadowBlur = 0;
-  ctx.beginPath();
-  ctx.arc(0, -64, 5, 0, Math.PI * 2);
-  ctx.fillStyle = "#aa2c69";
-  ctx.fill();
-  ctx.restore();
-}
 
-// Neon-bullet as circle with blue glow
-function drawBullet(ctx, b) {
-  ctx.save();
-  ctx.globalAlpha = 1;
-  ctx.shadowColor = "#2ecffd";
-  ctx.shadowBlur = 14;
-  ctx.fillStyle = "#2ecffd";
-  ctx.beginPath();
-  ctx.arc(b.x, b.y, b.r || 7, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-}
-
-// Draw enemy as rect/circle with neon glow per type
-function drawEnemy(ctx, e) {
-  ctx.save();
-  ctx.globalAlpha = 0.98;
-  ctx.shadowColor = e.color;
-  ctx.shadowBlur = 14;
-  ctx.fillStyle = e.color;
-  if (e.key === "bird") {
-    ctx.beginPath();
-    ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.globalAlpha = 1.0; ctx.shadowBlur = 0;
-    ctx.beginPath();
-    ctx.arc(e.x + 5, e.y - 2, 3.5, 0, Math.PI * 2);
-    ctx.fillStyle = "#fff";
-    ctx.fill();
-  } else if (e.key === "bot") {
-    ctx.fillRect(e.x - e.w / 2, e.y - e.h / 2, e.w, e.h);
-    ctx.globalAlpha = 1.0; ctx.shadowBlur = 0;
-    ctx.beginPath();
-    ctx.arc(e.x + e.w / 4, e.y - e.h / 4, 7, 0, Math.PI * 2);
-    ctx.fillStyle = "#fb73fa";
-    ctx.fill();
+  if (img && img.complete && img.naturalWidth > 0) {
+    // Draw image centered at player's position and scaled
+    const w = 34, h = 56; // preferred visual size
+    ctx.drawImage(
+      img,
+      -w / 2,
+      -h + 15,    // y offset so feet sit on ground
+      w,
+      h
+    );
   } else {
-    // zombie: rect+tube with neon circle head
-    ctx.fillRect(e.x - e.w / 2, e.y - e.h / 2 + 13, e.w, e.h - 14);
+    // Neon fallback: synthwave cyborg
+    ctx.shadowColor = "#9633f9";
+    ctx.shadowBlur = 16;
+    ctx.fillStyle = "#9633f9";
+    ctx.fillRect(-17, -43, 34, 46);
+    ctx.shadowColor = "#39ff14";
+    ctx.shadowBlur = 19;
     ctx.beginPath();
-    ctx.arc(e.x, e.y - e.h / 2 + 22, 17, 0, Math.PI * 2);
+    ctx.arc(0, -60, 18, 0, Math.PI * 2);
+    ctx.fillStyle = "#39ff14";
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.beginPath();
+    ctx.arc(0, -64, 5, 0, Math.PI * 2);
+    ctx.fillStyle = "#aa2c69";
     ctx.fill();
   }
   ctx.restore();
 }
 
+// Bullet: Asset or neon-blue plasma fallback
+function drawBullet(ctx, b) {
+  const img = assetImages['bullet'];
+  ctx.save();
+  if (img && img.complete && img.naturalWidth > 0) {
+    // Centered bullet sprite, scaled to bullet radius
+    const w = (b.r || 7) * 2, h = (b.r || 7) * 2;
+    ctx.drawImage(img, b.x - w / 2, b.y - h / 2, w, h);
+  } else {
+    // Neon bullet/glow fallback
+    ctx.globalAlpha = 1;
+    ctx.shadowColor = "#2ecffd";
+    ctx.shadowBlur = 14;
+    ctx.fillStyle = "#2ecffd";
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, b.r || 7, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+// Per-enemy draw: asset image, SVG, or neon fallback
+function drawEnemy(ctx, e) {
+  const img = assetImages[e.key];
+  ctx.save();
+  ctx.globalAlpha = 0.98;
+
+  if (img && img.complete && img.naturalWidth > 0) {
+    // Responsive width, height mapped from entity .w/.h/.radius.
+    let w = e.w || (e.radius ? e.radius * 2 : 38);
+    let h = e.h || w;
+    let cx = e.x - w / 2, cy = e.y - h / 2;
+    if (e.key === "bird") {
+      // Birds drawn as centered circles by default; align accordingly
+      cx = e.x - w / 2;
+      cy = e.y - h / 2;
+    }
+    ctx.drawImage(img, cx, cy, w, h);
+  } else {
+    // Fallback stylish neon vector
+    ctx.shadowColor = e.color;
+    ctx.shadowBlur = 14;
+
+    if (e.key === "bird") {
+      ctx.beginPath();
+      ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
+      ctx.fillStyle = e.color;
+      ctx.fill();
+      ctx.globalAlpha = 1.0; ctx.shadowBlur = 0;
+      ctx.beginPath();
+      ctx.arc(e.x + 5, e.y - 2, 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = "#fff";
+      ctx.fill();
+      // Optional gradient wing
+      let wingG = ctx.createRadialGradient(e.x, e.y, 4, e.x, e.y, e.radius);
+      wingG.addColorStop(0, "#fff");
+      wingG.addColorStop(1, "#2ecffd44");
+      ctx.globalAlpha = 0.22;
+      ctx.fillStyle = wingG;
+      ctx.beginPath();
+      ctx.ellipse(e.x, e.y, e.radius * 1.3, e.radius * 0.7, Math.PI * 0.15, 0, 2 * Math.PI);
+      ctx.fill();
+      ctx.globalAlpha = 0.98;
+    } else if (e.key === "bot") {
+      ctx.fillStyle = e.color;
+      ctx.fillRect(e.x - e.w / 2, e.y - e.h / 2, e.w, e.h);
+      ctx.globalAlpha = 1.0; ctx.shadowBlur = 0;
+      ctx.beginPath();
+      ctx.arc(e.x + e.w / 4, e.y - e.h / 4, 7, 0, Math.PI * 2);
+      ctx.fillStyle = "#fb73fa";
+      ctx.fill();
+      // Neon edge overlay
+      ctx.globalAlpha = 0.2;
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(e.x - e.w / 2, e.y - e.h / 2, e.w, e.h);
+      ctx.globalAlpha = 0.98;
+    } else {
+      // zombie: neon rect body, glowy circle head (with shadow for synth style)
+      ctx.fillRect(e.x - e.w / 2, e.y - e.h / 2 + 13, e.w, e.h - 14);
+      ctx.beginPath();
+      ctx.arc(e.x, e.y - e.h / 2 + 22, 17, 0, Math.PI * 2);
+      ctx.fill();
+      // Shine overlay
+      ctx.globalAlpha = 0.22;
+      ctx.beginPath();
+      ctx.arc(e.x - 4, e.y - e.h / 2 + 18, 7, 0, Math.PI * 2);
+      ctx.fillStyle = "#fff";
+      ctx.fill();
+      ctx.globalAlpha = 0.98;
+    }
+  }
+  ctx.restore();
+}
