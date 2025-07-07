@@ -258,7 +258,7 @@ function JuiceMachine({
         <button
           className="neon-btn jm-btn"
           disabled={btnDisabled}
-          onClick={btnDisabled ? undefined : handleJuice}
+          onClick={handleJuice}
           aria-busy={juicing ? "true" : undefined}
           tabIndex={btnDisabled ? -1 : 0}
           style={{
