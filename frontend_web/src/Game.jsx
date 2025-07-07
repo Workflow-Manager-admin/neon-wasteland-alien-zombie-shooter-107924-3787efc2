@@ -4,6 +4,9 @@ import React, {
 import { saveHighscore } from "./supabaseClient";
 import Leaderboard from "./components/Leaderboard.jsx";
 
+console.log("[Game.jsx] MODULE LOADED (top-level — should always fire on import)");
+
+
 /* ─────────── CONSTANTS ─────────── */
 const THEME = {
   primary: "#39ff14",
@@ -228,6 +231,17 @@ export default function Game(){
 
   return(
     <div className="neon-app-root">
+      <div style={{
+        background: "#f06",
+        color: "#fff",
+        padding: "16px",
+        fontSize: "1.3em",
+        textAlign: "center",
+        zIndex: 999,
+        border: "3px solid #39ff14"
+      }}>
+        [Game.jsx] COMPONENT RENDERED!
+      </div>
       {/* HUD */}
       <div className="hud-container" style={{position:"fixed",top:0,left:0,width:"100%"}}>
         <h2 style={{color:THEME.primary,margin:0}}>SCORE: {score}</h2>

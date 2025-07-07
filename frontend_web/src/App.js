@@ -416,6 +416,7 @@ function App() {
         <GameOverlay />
       </div>
       {/* TEMP: Mount Game.jsx directly for debug */}
+      {console.log("[App.js] Rendering <Game />")}
       <Game />
       <NeonControls />
       <footer className="footer-note">2024 &copy; Neon Synth Zombie Shooter</footer>
