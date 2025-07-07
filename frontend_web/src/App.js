@@ -118,6 +118,18 @@ function App() {
     }
   }, [hud.zombies, gameState]);
 
+  // Remove floats after animation end (1.12s) -- hook must live at the top level!
+  useEffect(() => {
+    if (activeSacrifice.floats.length > 0) {
+      const timer = setTimeout(() => {
+        setActiveSacrifice(prev =>
+          ({ ...prev, floats: prev.floats.length ? prev.floats.slice(1) : [] })
+        );
+      }, 1060);
+      return () => clearTimeout(timer);
+    }
+  }, [activeSacrifice.floats]);
+
   // Internal refs for main game objects
   const canvasRef = useRef();
   const world = useRef(null);
@@ -222,7 +234,6 @@ function App() {
     if (activeSacrifice.show && gameState === 'complete' && activeSacrifice.count > 0) {
       // Handler for live per-zombie increment as they drop in PortalSacrifice
       const onSacrificeDrop = (zNum) => {
-        // For each zombie drop, increment both live coins and sacrificed
         setActiveSacrifice(prev => ({
           ...prev,
           liveZombiesSacrificed: prev.liveZombiesSacrificed + 1,
@@ -230,9 +241,8 @@ function App() {
           floats: [...prev.floats, { id: Date.now() + Math.random(), value: '+' + prev.coinValue }]
         }));
       };
-      // Handler for batch complete (when all zombies go through portal & float animation - finalize awards)
+
       const onSacrificeComplete = (totalCoins) => {
-        // Update permanent game stats (session total, HUD coins, wipe killed count for next round)
         setZombiesSacrificed(prev => prev + activeSacrifice.count);
         setHud(hudPrev => ({
           ...hudPrev,
@@ -251,24 +261,11 @@ function App() {
 
         setTimeout(() => {
           startGame();
-        }, 1600); // Enough float+beat
+        }, 1600);
       };
 
-      // "Live" display counts: what would appear on the overlay as zombies drop in portal
       const liveZombiesSacrificed = activeSacrifice.liveZombiesSacrificed;
       const liveCoins = activeSacrifice.coins + activeSacrifice.liveCoinsEarned;
-      // Render floating "+N" coins (animate, then remove)
-      // Remove floats after animation end (1.12s)
-      useEffect(() => {
-        if (activeSacrifice.floats.length > 0) {
-          const timer = setTimeout(() => {
-            setActiveSacrifice(prev =>
-              ({ ...prev, floats: prev.floats.length ? prev.floats.slice(1) : [] })
-            );
-          }, 1060);
-          return () => clearTimeout(timer);
-        }
-      }, [activeSacrifice.floats]);
 
       return (
         <div className="game-overlay">
@@ -346,7 +343,6 @@ function App() {
 
   // HUD component
   const HUD = () => {
-    // If we're pending a sacrifice, show live count and never let it display 0 if about to sacrifice
     let displayZombiesSacrificed =
       activeSacrifice.show && activeSacrifice.count > 0
         ? zombiesSacrificed
