@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import './App.css';
-import JuiceMachine from './JuiceMachine.jsx';
+import PortalSacrifice from './PortalSacrifice.jsx';
 
 // Neon theme variables
 const THEME = {
@@ -54,29 +54,28 @@ function App() {
   // Game state hooks
   const [gameState, setGameState] = useState('menu'); // menu | running | paused | over | complete
   const [hud, setHud] = useState({
-    score: 0, coins: 0, juice: 0, level: 1, zombies: 0,
+    score: 0, coins: 0, level: 1, zombies: 0,
   });
 
-  // New state: tracks how many zombies have ever been juiced in this session.
-  const [zombiesJuiced, setZombiesJuiced] = useState(0);
+  // Tracks how many zombies have ever been sacrificed in this session.
+  const [zombiesSacrificed, setZombiesSacrificed] = useState(0);
 
   // For control state and canvas focus
   const [control, setControl] = useState({ left: false, right: false, shoot: false, jump: false });
   const [mobile, setMobile] = useState(false);
 
-  // Overlay/juicer states. These are at top-level per React hook order rules.
-  // Only used during gameState === 'complete'
-  const [pendingJuicing, setPendingJuicing] = useState(false);
-  const [payout, setPayout] = useState(0);
+  // Portal Sacrifice sequence state (for level end overlay)
+  const [pendingSacrifice, setPendingSacrifice] = useState(false);
+  const [portalCoinsPayout, setPortalCoinsPayout] = useState(0);
 
   useEffect(() => {
     if (gameState === 'complete') {
-      setPendingJuicing(true);
-      setPayout(0);
+      setPendingSacrifice(true);
+      setPortalCoinsPayout(0);
     }
     if (gameState !== 'complete') {
-      setPendingJuicing(false);
-      setPayout(0);
+      setPendingSacrifice(false);
+      setPortalCoinsPayout(0);
     }
   }, [gameState]);
 
@@ -168,7 +167,7 @@ function App() {
       return (
         <div className="game-overlay">
           <h1 className="neon-title">NEON WASTELAND <span className="accent-text">ZOMBIE SHOOTER</span></h1>
-          <p className="subtitle neon-text">Side-scroll, juice, and survive the apocalypse!</p>
+          <p className="subtitle neon-text">Side-scroll, shoot, and survive the apocalypse!</p>
           <button className="neon-btn" onClick={startGame} autoFocus>Start Game</button>
           <div className="howto-container">
             <p>Move: <kbd>←</kbd> / <kbd>→</kbd> or <kbd>A</kbd>/<kbd>D</kbd></p>
@@ -180,62 +179,35 @@ function App() {
       );
     }
 
-    // Track all changes to hud.zombies and log, to trace out-of-sync bugs.
-    // Moved hook to root of App to ensure hooks order.
-    // eslint-disable-next-line
-    useEffect(() => {
-      console.debug("[App DEBUG] hud.zombies changed:", hud.zombies);
-    }, [hud.zombies]);
-
-    if (gameState === 'complete' && pendingJuicing) {
-      // DEBUG: Log Overlay state at every render for diagnosis
-      // eslint-disable-next-line
-      console.debug("[Overlay/JuiceMachine] state: hud.zombies =", hud.zombies, "hud.coins =", hud.coins, "payout =", payout, "hud object:", hud, "pendingJuicing =", pendingJuicing);
-
-
-      // Award payout when JuiceMachine triggers onAward (after bottle fill).
-      const handleJuiceAward = (coinsAwarded) => {
-        setPayout(coinsAwarded);
-        // Also increment zombiesJuiced after payout by the number of juiced zombies:
-        setZombiesJuiced(prev => prev + hud.zombies);
-        setHud(hudPrev => {
-          // Prevent race: don't deduct zombies twice if already zero.
-          if (hudPrev.zombies === 0) {
-            return { ...hudPrev, coins: hudPrev.coins + coinsAwarded };
-          }
-          // Set zombies count to zero as JuiceMachine has processed the batch.
-          return {
-            ...hudPrev,
-            coins: hudPrev.coins + coinsAwarded,
-            zombies: 0,
-          }
-        });
-      };
-
-      // Once the animation/payout sequence finishes, cleanup and restart game after short delay.
-      const handleJuicingDone = () => {
-        setHud(hudPrev => {
-          if (hudPrev.zombies === 0) return hudPrev;
-          return { ...hudPrev, zombies: 0 };
-        });
+    // Sacrifice overlay: show portal, animate zombies drop-in, instant payout, floating "+X Coins" when batch complete
+    if (gameState === 'complete' && pendingSacrifice) {
+      const handleSacrificeComplete = (coinsAwarded) => {
+        // Increment coins and sacrificed count immediately
+        setPortalCoinsPayout(coinsAwarded);
+        setZombiesSacrificed(prev => prev + hud.zombies);
+        setHud(hudPrev => ({
+          ...hudPrev,
+          coins: hudPrev.coins + coinsAwarded,
+          zombies: 0,
+        }));
+        // After payout+float, restart next round
         setTimeout(() => {
-          setPendingJuicing(false);
-          setPayout(0);
+          setPendingSacrifice(false);
+          setPortalCoinsPayout(0);
           startGame();
-        }, 1600); // Match juice bottle anim
+        }, 1800);
       };
 
       return (
         <div className="game-overlay">
-          <div className="juice-ready">JUICE READY!</div>
-          <JuiceMachine
+          <PortalSacrifice
             zombieCount={hud.zombies}
-            onAward={handleJuiceAward}
-            initialCoins={hud.coins}
-            onDone={handleJuicingDone}
+            coinValue={2}
+            coins={hud.coins}
+            onSacrificeComplete={handleSacrificeComplete}
           />
-          <div className="big-score neon-text">Zombies Juiced: {hud.zombies}</div>
-          <div className="coins neon-glow">Coins: <span>{hud.coins + payout}</span></div>
+          <div className="big-score neon-text" style={{marginTop:'1em'}}>Zombies Sacrificed: {zombiesSacrificed + hud.zombies}</div>
+          <div className="coins neon-glow">Coins: <span>{hud.coins + portalCoinsPayout}</span></div>
         </div>
       );
     }
@@ -259,7 +231,6 @@ function App() {
     <div className="hud-container">
       <div className="hud-left">
         <div className="hud-label"><span className="zombie-icon"/> x {hud.zombies} / {world.current?.zombiesToJuice ?? 6} </div>
-        <JuiceMeter juice={hud.juice} max={world.current?.zombiesToJuice ?? 6} accent={THEME.primary} />
       </div>
       <div className="hud-center">
         <div className="hud-title">LEVEL {hud.level}</div>
@@ -274,24 +245,13 @@ function App() {
             textShadow: "0 0 5px #39ff14c7",
             letterSpacing: ".01em"
         }}>
-          Zombies Juiced: {zombiesJuiced}
+          Zombies Sacrificed: {zombiesSacrificed}
         </p>
       </div>
     </div>
   );
 
-  function JuiceMeter({juice, max, accent}) {
-    const pct = Math.min(juice / Math.max(max, 1), 1);
-    return (
-      <div className="juice-meter-bg">
-        <div className="juice-meter-fill" style={{
-          width: `${Math.round(pct * 100)}%`,
-          boxShadow: `0 0 10px 2px ${accent}, 0 0 32px 8px ${accent}55`
-        }}/>
-        <div className="juice-meter-frame"/>
-      </div>
-    );
-  }
+  // JuiceMeter has been removed for Portal Sacrifice system
 
   function NeonControls() {
     return (
@@ -672,13 +632,12 @@ class GameWorld {
     ctx.restore();
   }
 
-  // API: get HUD state (juice:zombies juiced; coins, etc)
+  // API: get HUD state (zombies juiced; coins, etc)
   getHUD() {
     return {
       level: this.level,
       score: this.score,
       coins: this.coins,
-      juice: this.zombiesJuiced,
       zombies: this.zombiesJuiced,
     };
   }
