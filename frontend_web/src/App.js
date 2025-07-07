@@ -1,8 +1,8 @@
 import React, { useRef, useEffect, useState } from 'react';
 import './App.css';
-import PortalSacrifice from './PortalSacrifice.jsx';
+import supabase from './supabaseClient';
 
-// Neon theme variables
+// Neon synthwave theme
 const THEME = {
   accent: '#aa2c69',
   primary: '#39ff14',
@@ -12,452 +12,394 @@ const THEME = {
   canvasHeight: 600,
 };
 
-/**
- * The only zombie type: green zombie.
- * All gameplay, UI, and coin logic is now tied to this type.
- */
-const zombieTypes = [
+const ENEMY_TYPES = [
   {
-    name: "green",
-    color: "#6efd9a",
-    shadow: "#39ff1475",
-    head: "#161e13",
-    eyes: "#fb73fa",
-    speed: 1.2,
-    w: 44,
-    h: 62,
-    coins: 2,
-    labelColor: "#39ff14",
-    label: "+2",
+    key: 'zombie', color: '#6efd9a', shadow: '#39ff1475', head: '#161e13', eye: '#fb73fa', speed: 2, w: 44, h: 62, score: 100,
+  },
+  {
+    key: 'bird', color: '#2ecffd', shadow: '#2ecffd84', head: '#283957', eye: '#39ff14', speed: 3.2, w: 38, h: 36, score: 170,
+  },
+  {
+    key: 'bot', color: '#aa2c69', shadow: '#aa2c697a', head: '#32213e', eye: '#fff', speed: 2.8, w: 41, h: 46, score: 130,
   }
 ];
 
-// Helper for controlling frame rate
-const useAnimationFrame = (callback, isRunning = true) => {
+function randomEnemyType() {
+  const idx = Math.floor(Math.random() * ENEMY_TYPES.length);
+  return ENEMY_TYPES[idx];
+}
+
+// Animation loop hook
+function useAnimationFrame(callback, running = true) {
   const req = useRef();
-  const animate = time => {
-    callback(time);
-    req.current = requestAnimationFrame(animate);
-  };
   useEffect(() => {
-    if (isRunning) {
-      req.current = requestAnimationFrame(animate);
+    if (running) {
+      let anim = (ts) => {
+        callback(ts);
+        req.current = requestAnimationFrame(anim);
+      };
+      req.current = requestAnimationFrame(anim);
       return () => cancelAnimationFrame(req.current);
     }
-  });
-};
+  }, [running, callback]);
+}
 
-/**
- * PUBLIC_INTERFACE
- */
+// PUBLIC_INTERFACE
 function App() {
-  // Game state hooks
-  const [gameState, setGameState] = useState('menu'); // menu | running | paused | over | complete
-  const [hud, setHud] = useState({
-    score: 0, coins: 0, level: 1, zombies: 0,
-  });
-
-  // Tracks how many zombies have ever been sacrificed in this session.
-  const [zombiesSacrificed, setZombiesSacrificed] = useState(0);
-
-  // Dedicated tracking of zombies killed in the last round
-  const [zombiesKilledThisRound, setZombiesKilledThisRound] = useState(0);
-
-  // Track "live" sacrifice process (shows running tally as zombies drop)
-  const [activeSacrifice, setActiveSacrifice] = useState({
-    show: false,
-    count: 0, // how many zombies to sacrifice
-    coins: 0, // starting coins at sacrifice
-    coinValue: 2,
-    liveZombiesSacrificed: 0,
-    liveCoinsEarned: 0, // For live "+N" update
-    floats: [], // Array of floating "+N"
-  });
-
-  // For control state and canvas focus
-  const [control, setControl] = useState({ left: false, right: false, shoot: false, jump: false });
-  const [mobile, setMobile] = useState(false);
-
-  // Internal refs for main game objects
+  // State
+  const [gameState, setGameState] = useState('menu');
+  const [score, setScore] = useState(0);
+  const [playerName, setPlayerName] = useState('');
+  const [showNamePrompt, setShowNamePrompt] = useState(false);
+  const [highscoreStatus, setHighscoreStatus] = useState('');
+  
+  // main gameplay refs
   const canvasRef = useRef();
-  const world = useRef(null);
+  const [player, setPlayer] = useState(createPlayer());
+  const [enemies, setEnemies] = useState([]);
+  const [bullets, setBullets] = useState([]);
+  const [control, setControl] = useState({ left: false, right: false, face: 1, shoot: false });
+  const [lastDir, setLastDir] = useState(1);
+  const [touchUI, setTouchUI] = useState(false);
+  const [tick, setTick] = useState(0);
 
-  // Overlay lock refs must ALWAYS be created at the top level (not in conditional or render logic)
-  const overlayActiveRef = useRef(false);
-  const noZombiesRef = useRef(false);
+  // Score submit
+  const [sendingScore, setSendingScore] = useState(false);
 
-  // See if a round just finished to start portal-sacrifice
+  // Initial window sizing
   useEffect(() => {
-    if (gameState === 'complete') {
-      // On round complete, start the portal-sacrifice if zombies were killed
-      setActiveSacrifice({
-        show: true,
-        count: zombiesKilledThisRound,
-        coins: hud.coins,
-        coinValue: 2,
-        liveZombiesSacrificed: 0,
-        liveCoinsEarned: 0,
-        floats: [],
-      });
-    } else if (gameState !== 'complete') {
-      // Hide sacrifice, always reset all live counts/state
-      setActiveSacrifice({
-        show: false,
-        count: 0,
-        coins: hud.coins,
-        coinValue: 2,
-        liveZombiesSacrificed: 0,
-        liveCoinsEarned: 0,
-        floats: [],
-      });
-    }
-  // eslint-disable-next-line
-  }, [gameState]);
-
-  // Each HUD update (from GameWorld), track zombies killed independently
-  useEffect(() => {
-    if (gameState === 'running' || gameState === 'over' || gameState === 'complete') {
-      setZombiesKilledThisRound(hud.zombies || 0);
-    } else if (gameState === 'menu') {
-      setZombiesKilledThisRound(0);
-    }
-  }, [hud.zombies, gameState]);
-
-  // Remove floats after animation end (1.12s)
-  useEffect(() => {
-    if (activeSacrifice.floats.length > 0) {
-      const timer = setTimeout(() => {
-        setActiveSacrifice(prev =>
-          ({ ...prev, floats: prev.floats.length ? prev.floats.slice(1) : [] })
-        );
-      }, 1060);
-      return () => clearTimeout(timer);
-    }
-  }, [activeSacrifice.floats]);
-
-  // Detect mobile
-  useEffect(() => {
-    setMobile(window.innerWidth < 900);
-    const onResize = () => setMobile(window.innerWidth < 900);
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    setTouchUI(window.innerWidth < 950);
+    const onResize = () => setTouchUI(window.innerWidth < 950);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  // Start or reset the game
-  const startGame = () => {
-    world.current = new GameWorld(THEME, () => {
-      // On HUD update: called from world
-      if (world.current && typeof world.current.getHUD === "function") {
-        const s = world.current.getHUD();
-        setHud(s);
-      }
-    }, () => {
-      // On game over
-      setGameState('over');
-    }, () => {
-      // On level complete
-      setGameState('complete');
-    });
-    setGameState('running');
-    setControl({ left: false, right: false, shoot: false, jump: false });
-  };
+  // Keyboard controls
+  useEffect(() => {
+    const down = (e) => {
+      if (gameState !== 'playing') return;
+      if (['ArrowLeft', 'a', 'A'].includes(e.key)) { setControl(s => ({ ...s, left: true, face: -1 })); setLastDir(-1);}
+      if (['ArrowRight', 'd', 'D'].includes(e.key)) { setControl(s => ({ ...s, right: true, face: 1 })); setLastDir(1);}
+      if ([' ', 'ArrowUp', 'w', 'W'].includes(e.key)) setControl(s => ({ ...s, shoot: true }));
+    };
+    const up = (e) => {
+      if (['ArrowLeft', 'a', 'A'].includes(e.key)) setControl(s => ({ ...s, left: false }));
+      if (['ArrowRight', 'd', 'D'].includes(e.key)) setControl(s => ({ ...s, right: false }));
+      if ([' ', 'ArrowUp', 'w', 'W'].includes(e.key)) setControl(s => ({ ...s, shoot: false }));
+    };
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+    }
+  }, [gameState]);
 
   // Game loop
-  useAnimationFrame((ts) => {
-    // Only update/draw world if NOT complete (i.e. no overlay/sacrifice is active)
-    if (
-      gameState === 'running' &&
-      canvasRef.current &&
-      world.current &&
-      !(activeSacrifice.show && gameState === 'complete')
-    ) {
-      world.current.update(control);
-      world.current.draw(canvasRef.current);
-    }
-    // If frozen for sacrifice overlay, lock world state (draw once only)
-    if (
-      (gameState === 'complete' && activeSacrifice.show && world.current && canvasRef.current)
-    ) {
-      world.current.draw(canvasRef.current);
-    }
-  }, gameState === 'running' || (gameState === 'complete' && activeSacrifice.show));
+  useAnimationFrame(() => {
+    if (gameState !== 'playing') return;
+    setTick(t => t + 1);
 
-  // Controls: keyboard
+    // Move player
+    setPlayer(p => {
+      let nx = p.x;
+      if (control.left) { nx = Math.max(18, nx - p.speed); }
+      if (control.right) { nx = Math.min(THEME.canvasWidth - 28, nx + p.speed); }
+      return { ...p, x: nx, dir: control.face ?? lastDir };
+    });
+
+    // Bullets movement
+    setBullets(bs => bs.map(b => ({ ...b, x: b.x + b.vx })).filter(b =>
+      b.x > -40 && b.x < THEME.canvasWidth + 40)
+    );
+
+    // Enemies move: either L->R or R->L based on side
+    setEnemies(es => es.map(e => ({
+      ...e,
+      x: e.fromLeft ? e.x + e.speed : e.x - e.speed,
+    })).filter(e =>
+      e.x > -80 && e.x < THEME.canvasWidth + 80 && !e.dead
+    ));
+
+    // Collision: bullets hit enemies
+    setBullets(bs => {
+      const newEnemies = [...enemies];
+      const hits = [];
+      let scoreAdd = 0;
+      const remain = [];
+      for (let b of bs) {
+        let hit = false;
+        for (let i = 0; i < newEnemies.length; ++i) {
+          const e = newEnemies[i];
+          if (!e.dead && boxCollide(b, e)) {
+            hit = true;
+            newEnemies[i] = { ...e, dead: true, diedTick: tick };
+            scoreAdd += e.score;
+            break;
+          }
+        }
+        if (!hit) remain.push(b);
+        else hits.push(b);
+      }
+      setEnemies(newEnemies);
+      if (scoreAdd > 0) setScore(s => s + scoreAdd);
+      return remain;
+    });
+
+    // Player collision (game over)
+    for (let e of enemies) {
+      if (!e.dead && boxCollide(player, e)) {
+        setGameState('gameover');
+        setTimeout(() => setShowNamePrompt(true), 700);
+        return;
+      }
+    }
+
+    // Remove old dead enemies
+    setEnemies(es => es.filter(e => !e.dead || (tick - (e.diedTick||0) < 22)));
+
+    // Enemy spawn timing
+    if (tick % 37 === 0) {
+      spawnEnemy(setEnemies);
+    }
+  }, gameState === 'playing');
+
+  // Shooting!
   useEffect(() => {
-    const keydown = (e) => {
-      // Block all player input when portal sacrifice overlay is active
-      if (gameState !== 'running' || (activeSacrifice.show && gameState === 'complete')) return;
-      if (["ArrowLeft", "a", "A"].includes(e.key)) setControl(s => ({ ...s, left: true }));
-      if (["ArrowRight", "d", "D"].includes(e.key)) setControl(s => ({ ...s, right: true }));
-      if (["ArrowUp"].includes(e.key) && !e.repeat) setControl(s => ({ ...s, jump: true }));
-      if ([" ", "w", "W"].includes(e.key)) setControl(s => ({ ...s, shoot: true }));
-    };
-    const keyup = (e) => {
-      if (["ArrowLeft", "a", "A"].includes(e.key)) setControl(s => ({ ...s, left: false }));
-      if (["ArrowRight", "d", "D"].includes(e.key)) setControl(s => ({ ...s, right: false }));
-      if (["ArrowUp"].includes(e.key)) setControl(s => ({ ...s, jump: false }));
-      if ([" ", "w", "W"].includes(e.key)) setControl(s => ({ ...s, shoot: false }));
-    };
-    window.addEventListener('keydown', keydown);
-    window.addEventListener('keyup', keyup);
-    return () => {
-      window.removeEventListener('keydown', keydown);
-      window.removeEventListener('keyup', keyup);
-    };
-  }, [gameState, activeSacrifice.show]);
+    if (gameState !== 'playing') return;
+    if (control.shoot && player.shootCooldown <= 0) {
+      // Fire bullet
+      setBullets(bs =>
+        [...bs, createBullet(player.x + player.dir * 29, player.y + 27, player.dir)]
+      );
+      setPlayer(p => ({ ...p, shootCooldown: 12 }));
+    }
+  }, [control.shoot, player.x, player.y, player.dir, gameState]); // trigger on shoot
 
-  // Mobile: onscreen control handler
-  const handleTouch = (type, enable) => {
-    if (activeSacrifice.show && gameState === 'complete') return; // no input during overlay
-    if (type === 'left') setControl(s => ({ ...s, left: enable }));
-    if (type === 'right') setControl(s => ({ ...s, right: enable }));
-    if (type === 'shoot') setControl(s => ({ ...s, shoot: enable }));
-    if (type === 'jump') setControl(s => ({ ...s, jump: enable }));
-  };
+  // Shoot cool down
+  useEffect(() => {
+    if (gameState !== 'playing') return;
+    if (player.shootCooldown > 0) {
+      const timeout = setTimeout(() => {
+        setPlayer(p => ({ ...p, shootCooldown: Math.max(0, p.shootCooldown - 1) }))
+      }, 13);
+      return () => clearTimeout(timeout);
+    }
+  }, [player.shootCooldown, gameState]);
 
-  // Button click (shoot or jump for mobile)
-  const handleButtonClick = (type) => {
-    if (activeSacrifice.show && gameState === 'complete') return; // block all input during portal overlay
+  // New game
+  function startGame() {
+    setScore(0);
+    setPlayer(createPlayer());
+    setEnemies([]);
+    setBullets([]);
+    setGameState('playing');
+    setHighscoreStatus('');
+    setShowNamePrompt(false);
+    setSendingScore(false);
+    setTick(0);
+  }
+  // Quit to menu
+  function quitGame() {
+    setGameState('menu');
+    setScore(0);
+    setPlayer(createPlayer());
+    setEnemies([]);
+    setBullets([]);
+    setHighscoreStatus('');
+    setShowNamePrompt(false);
+    setSendingScore(false);
+    setTick(0);
+  }
+
+  // Touch controls
+  function handleTouch(type, enable) {
+    if (gameState !== 'playing') return;
+    if (type === 'left') { setControl(c => ({ ...c, left: enable, face: -1 })); setLastDir(-1);}
+    if (type === 'right') { setControl(c => ({ ...c, right: enable, face: 1 })); setLastDir(1);}
     if (type === 'shoot') {
-      setControl(s => ({ ...s, shoot: true }));
-      setTimeout(() => setControl(s => ({ ...s, shoot: false })), 80);
+      setControl(c => ({ ...c, shoot: enable }));
+      if (enable) setTimeout(() => setControl(c => ({ ...c, shoot: false })), 90);
     }
-    if (type === 'jump') {
-      setControl(s => ({ ...s, jump: true }));
-      setTimeout(() => setControl(s => ({ ...s, jump: false })), 120);
-    }
-  };
+    if (type === 'faceleft' && enable) { setControl(c => ({ ...c, face: -1 })); setLastDir(-1);}
+    if (type === 'faceright' && enable) { setControl(c => ({ ...c, face: 1 })); setLastDir(1);}
+  }
 
-  // Render overlay screens
-  const Overlay = () => {
+  // Save high score to Supabase
+  async function saveScoreAndReset() {
+    setSendingScore(true);
+    setHighscoreStatus('');
+    const username = playerName || 'Anon';
+    try {
+      await supabase
+        .from('highscores')
+        .insert([
+          { player: username, score: score }
+        ]);
+      setHighscoreStatus('Score saved!');
+    } catch (e) {
+      setHighscoreStatus('Error saving score');
+    }
+    setTimeout(quitGame, 1100);
+  }
+
+  // Name prompt form
+  function NamePrompt() {
+    return (
+      <div className="game-overlay">
+        <div style={{marginBottom: '1.3em'}}>
+          <div className="game-over-title neon-text">GAME OVER</div>
+          <div className="big-score neon-text">Score: {score}</div>
+        </div>
+        <form onSubmit={e => { e.preventDefault(); saveScoreAndReset(); }}>
+          <div>
+            <label style={{fontSize:'1.2em',letterSpacing:'.06em',color:THEME.primary}}>Enter Name to Save High Score:</label>
+          </div>
+          <input
+            className="neon-input"
+            type="text"
+            maxLength={16}
+            autoFocus
+            value={playerName}
+            disabled={sendingScore}
+            onChange={e => setPlayerName(e.target.value.replace(/[^a-z0-9_\- ]/ig,''))}
+            style={{
+              margin: '1em auto', fontSize: '1.02em', padding: '.49em 1em',
+              background: '#191925', color: '#39ff14', borderRadius: '10px',
+              border: `2px solid ${THEME.primary}`, boxShadow: '0 0 8px #39ff1460'
+            }}
+          />
+          <button type="submit" className="neon-btn" style={{width: 140,marginBottom:'1em'}} disabled={sendingScore}>Save</button>
+        </form>
+        <div style={{fontSize: '1.11em', minHeight:'2em', color: THEME.accent, fontWeight: 700, marginTop:8}}>
+          {highscoreStatus}
+        </div>
+        <button className="neon-btn neon-btn-accent" onClick={quitGame} style={{marginTop:'1.7em'}}>Quit without saving</button>
+      </div>
+    );
+  }
+
+  // Overlay screens
+  function GameOverlay() {
     if (gameState === 'menu') {
       return (
         <div className="game-overlay">
-          <h1 className="neon-title">NEON WASTELAND <span className="accent-text">ZOMBIE SHOOTER</span></h1>
-          <p className="subtitle neon-text">Side-scroll, shoot, and survive the apocalypse!</p>
+          <h1 className="neon-title" style={{marginBottom:'0.18em'}}>SYNTH ZOMBIE SHOOTER</h1>
+          <p className="subtitle neon-text" style={{marginBottom:'2.6em'}}>Fight zombies, birds, & bots! Shoot left/right, rack up your score, and survive the synthwave wasteland.<br/>Can you make the highscores?</p>
           <button className="neon-btn" onClick={startGame} autoFocus>Start Game</button>
-          <div className="howto-container">
-            <p>Move: <kbd>←</kbd> / <kbd>→</kbd> or <kbd>A</kbd>/<kbd>D</kbd></p>
-            <p>Shoot: <kbd>Space</kbd> or <kbd>W</kbd>/<kbd>↑</kbd></p>
-            <p>Jump: <kbd>↑</kbd> (Up Arrow)</p>
-            <p>Or use the neon buttons below (mobile friendly!)</p>
-          </div>
         </div>
       );
     }
-
-    // Next: Portal Sacrifice overlay - only show if zombies were killed and we're in "sacrifice" mode
-    if (activeSacrifice.show && gameState === 'complete' && activeSacrifice.count > 0) {
-      // Each drop fires as zombie enters portal (triggers "+2" float & live counter)
-      const onSacrificeDrop = (zNum) => {
-        setActiveSacrifice(prev => ({
-          ...prev,
-          liveZombiesSacrificed: prev.liveZombiesSacrificed + 1,
-          liveCoinsEarned: prev.liveCoinsEarned + prev.coinValue,
-          floats: [...prev.floats, { id: Date.now() + Math.random(), value: '+' + prev.coinValue }]
-        }));
-      };
-
-      // Allow reward payout and round reset only ONCE per overlay instance
-      const onSacrificeComplete = (totalCoins) => {
-        if (overlayActiveRef.current) return;
-        overlayActiveRef.current = true;
-
-        setZombiesSacrificed(prev => prev + activeSacrifice.count);
-        setHud(hudPrev => ({
-          ...hudPrev,
-          coins: hudPrev.coins + totalCoins,
-          zombies: 0,
-        }));
-        setActiveSacrifice(prev => ({
-          ...prev,
-          show: false,
-          count: 0,
-          liveZombiesSacrificed: 0,
-          liveCoinsEarned: 0,
-          floats: [],
-        }));
-        setTimeout(() => {
-          setZombiesKilledThisRound(0);
-          overlayActiveRef.current = false;
-          startGame();
-        }, 1280);
-      };
-
-      const liveZombiesSacrificed = activeSacrifice.liveZombiesSacrificed;
-      const liveCoins = activeSacrifice.coins + activeSacrifice.liveCoinsEarned;
-
-      return (
-        <div className="game-overlay">
-          <PortalSacrifice
-            zombieCount={activeSacrifice.count}
-            coinValue={activeSacrifice.coinValue}
-            coins={activeSacrifice.coins}
-            onSacrificeDrop={onSacrificeDrop}
-            onSacrificeComplete={onSacrificeComplete}
-          />
-          <div className="big-score neon-text" style={{marginTop:'1em'}}>
-            Zombies Sacrificed: {zombiesSacrificed + liveZombiesSacrificed}
-          </div>
-          <div className="coins neon-glow">Coins: <span>{liveCoins}</span></div>
-          {/* Floating "+N" coins stack */}
-          <div style={{
-            position: "absolute", left: "50%", top: "48%", width: 180, transform: "translate(-50%, 0)", pointerEvents: "none"
-          }}>
-            {activeSacrifice.floats.map(f =>
-              <div
-                key={f.id}
-                style={{
-                  color: "#ffef50",
-                  fontWeight: "bold",
-                  textShadow: "0 0 15px #fff944, 0 0 30px #aa2c695c, 0 1px 2px #181925",
-                  fontSize: "1.7em",
-                  marginBottom: "-15px",
-                  animation: "portal-float-up 1s cubic-bezier(.62,.09,.51,1.01)",
-                  pointerEvents: "none",
-                  opacity: 0.91,
-                }}>
-                {f.value} <span style={{
-                  display: "inline-block",
-                  width: "1.1em",
-                  height: "1.1em",
-                  background: "radial-gradient(ellipse at 60% 35%,#ffef50 90%,#aa2c69 130%)",
-                  boxShadow: "0 0 12px #f3f14b99",
-                  borderRadius: "50%",
-                  border: "2px solid #7d6c28",
-                  marginLeft: 3,
-                  verticalAlign: "middle",
-                }}/>
-              </div>
-            )}
-          </div>
-        </div>
-      );
+    if (showNamePrompt) {
+      return <NamePrompt />;
     }
-
-    // If round ends and no zombies were killed, show brief overlay and robustly lock input until round transitions.
-    if (gameState === 'complete' && (!activeSacrifice.count || zombiesKilledThisRound === 0)) {
-      if (!noZombiesRef.current) {
-        noZombiesRef.current = true;
-        setTimeout(() => {
-          setZombiesKilledThisRound(0);
-          noZombiesRef.current = false;
-          startGame();
-        }, 700);
-      }
-      return (
-        <div className="game-overlay neon-text">
-          No zombies to sacrifice!
-        </div>
-      );
-    }
-
-    if (gameState === 'over') {
+    if (gameState === 'gameover') {
       return (
         <div className="game-overlay">
           <div className="game-over-title neon-text">GAME OVER</div>
-          <div className="big-score neon-text">Score: {hud.score}</div>
-          <div className="coins neon-glow">Coins: <span>{hud.coins}</span></div>
-          <button className="neon-btn" onClick={startGame}>Restart</button>
+          <div className="big-score neon-text">Score: {score}</div>
         </div>
       );
     }
-
     return null;
-  };
+  }
 
-  // HUD component
-  const HUD = () => {
-    let displayZombiesSacrificed =
-      activeSacrifice.show && activeSacrifice.count > 0
-        ? zombiesSacrificed
-        : zombiesSacrificed;
-    if (activeSacrifice.show && activeSacrifice.count > 0) {
-      displayZombiesSacrificed = zombiesSacrificed + activeSacrifice.liveZombiesSacrificed;
-    }
-    // Always show latest HUD/zombie-killed state for juiced count, never 0 during sacrifice
-    const zombiesDisplay =
-      (activeSacrifice.show && activeSacrifice.count > 0)
-        ? zombiesKilledThisRound
-        : hud.zombies;
-
+  // HUD
+  function Hud() {
     return (
       <div className="hud-container">
         <div className="hud-left">
-          <div className="hud-label">
-            <span className="zombie-icon"/> x {zombiesDisplay} / {world.current?.zombiesToJuice ?? 6}
-          </div>
+          <div className="hud-title">SCORE: {score}</div>
         </div>
-        <div className="hud-center">
-          <div className="hud-title">LEVEL {hud.level}</div>
-        </div>
-        <div className="hud-right" style={{ flexDirection: "column", alignItems: "flex-end" }}>
-          <div className="hud-label coins"><span className="coin-icon"/> {
-            activeSacrifice.show ? activeSacrifice.coins + activeSacrifice.liveCoinsEarned : hud.coins
-          }</div>
-          <p style={{
-              margin: "2px 0 0 0",
-              color: THEME.primary,
-              fontWeight: 600,
-              fontSize: "0.95em",
-              textShadow: "0 0 5px #39ff14c7",
-              letterSpacing: ".01em"
-          }}>
-            Zombies Sacrificed: {displayZombiesSacrificed}
-          </p>
+        <div className="hud-center"/>
+        <div className="hud-right" style={{flexDirection:'column',alignItems:'flex-end'}}>
+          <button className="neon-btn neon-btn-accent" onClick={quitGame}>Quit</button>
         </div>
       </div>
     );
-  };
+  }
 
-  // JuiceMeter has been removed for Portal Sacrifice system
-
+  // Onscreen neon controls
   function NeonControls() {
     return (
-      <div className={"btn-panel" + (mobile ? " btn-panel-mobile" : "")}>
+      <div className={"btn-panel" + (touchUI ? " btn-panel-mobile" : "")}>
         <button
-          className={"neon-control-btn"}
+          className="neon-control-btn"
+          tabIndex={-1}
+          aria-label="Face Left"
+          onTouchStart={() => handleTouch('faceleft', true)}
+          onMouseDown={() => handleTouch('faceleft', true)}
+        >⮜</button>
+        <button
+          className="neon-control-btn"
           tabIndex={-1}
           aria-label="Move Left"
           onTouchStart={() => handleTouch('left', true)}
           onTouchEnd={() => handleTouch('left', false)}
           onMouseDown={() => handleTouch('left', true)}
-          onMouseUp={() => handleTouch('left', false)}>
-          ◀
-        </button>
+          onMouseUp={() => handleTouch('left', false)}
+        >◀</button>
         <button
-          className={"neon-control-btn"}
-          tabIndex={-1}
-          aria-label="Jump"
-          onTouchStart={() => handleButtonClick('jump')}
-          onClick={() => handleButtonClick('jump')}
-        >▲</button>
-        <button
-          className={"neon-control-btn"}
+          className="neon-control-btn"
           tabIndex={-1}
           aria-label="Move Right"
           onTouchStart={() => handleTouch('right', true)}
           onTouchEnd={() => handleTouch('right', false)}
           onMouseDown={() => handleTouch('right', true)}
-          onMouseUp={() => handleTouch('right', false)}>
-          ▶
-        </button>
+          onMouseUp={() => handleTouch('right', false)}
+        >▶</button>
+        <button
+          className="neon-control-btn"
+          tabIndex={-1}
+          aria-label="Face Right"
+          onTouchStart={() => handleTouch('faceright', true)}
+          onMouseDown={() => handleTouch('faceright', true)}
+        >⮞</button>
         <button
           className="neon-control-btn neon-btn-accent"
           tabIndex={-1}
           aria-label="Shoot"
-          onTouchStart={() => handleButtonClick('shoot')}
-          onClick={() => handleButtonClick('shoot')}
-        >
-          <span role="img" aria-label="Gun">&#128299;</span>
-        </button>
+          onTouchStart={() => handleTouch('shoot', true)}
+          onClick={() => handleTouch('shoot', true)}
+        >💥</button>
       </div>
     );
   }
 
+  // Drawing logic
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, THEME.canvasWidth, THEME.canvasHeight);
+    drawBG(ctx);
+
+    // Draw all enemies
+    for (let e of enemies) {
+      drawEnemy(ctx, e);
+    }
+
+    // Draw all bullets
+    for (let b of bullets) {
+      drawBullet(ctx, b);
+    }
+
+    // Draw player
+    drawPlayer(ctx, player);
+
+    // Overlay dead effect (fade out when dead)
+    if (gameState === 'gameover') {
+      ctx.save();
+      ctx.globalAlpha = 0.6;
+      ctx.fillStyle = '#161c33af';
+      ctx.fillRect(0, 0, THEME.canvasWidth, THEME.canvasHeight);
+      ctx.restore();
+    }
+  }, [player, enemies, bullets, gameState, tick]);
+
   return (
     <div className="neon-app-root">
-      <HUD />
+      <Hud />
       <div className="game-canvas-container">
         <canvas
           id="game-canvas"
@@ -466,508 +408,262 @@ function App() {
           ref={canvasRef}
           tabIndex={1}
           aria-label="Game Canvas"
-        ></canvas>
-        <Overlay />
+        />
+        <GameOverlay />
       </div>
       <NeonControls />
-      <footer className="footer-note">2024 &copy; Neon Wasteland Alien Zombie Shooter</footer>
+      <footer className="footer-note">2024 &copy; Neon Synth Zombie Shooter</footer>
     </div>
   );
 }
 
-// -- GAME CODE BELOW (pure JS/HTML/CSS shapes)
-class GameWorld {
-  /**
-   * GameWorld manages the main gameplay, player and enemy logic.
-   * Now includes jump state: playerY, velocityY, gravity, isJumping.
-   */
-  constructor(theme, onHUD, onGameOver, onLevelComplete) {
-    this.theme = theme;
-    this.onHUD = onHUD;
-    this.onGameOver = onGameOver;
-    this.onLevelComplete = onLevelComplete;
-    this.width = theme.canvasWidth;
-    this.height = theme.canvasHeight;
-    this.groundY = this.height - 120;
-
-    this.playerGroundY = this.groundY-48;
-    this.playerGravity = 1.6;
-    this.playerJumpStrength = 22.5;
-    this.playerVelocityY = 0;
-    this.playerIsJumping = false;
-
-    this.state = 'running';
-    this.level = 1;
-    this.reset();
-  }
-
-  reset() {
-    this.scrollX = 0;
-    this.score = 0;
-    this.coins = 0;
-    this.zombies = [];
-    this.bullets = [];
-    this.effects = [];
-    this.spawnCooldown = 0;
-    this.zombiesJuiced = 0;
-    this.zombiesToJuice = 6 + this.level * 2;
-
-    this.player = {
-      x: 100,
-      y: this.playerGroundY,
-      width: 32,
-      height: 56,
-      speed: 6,
-      dir: 1,
-      alive: true,
-      action: 'idle',
-      shootCooldown: 0,
-      velocityY: 0,
-      isJumping: false,
-    };
-    this.playerVelocityY = 0;
-    this.playerIsJumping = false;
-
-    // spawn initial zombies (all green zombies)
-    for (let i = 0; i < this.zombiesToJuice; ++i) {
-      this.zombies.push(this._spawnZombie(400+i*90+Math.random()*90));
-    }
-    this.gameOver = false;
-    this.levelComplete = false;
-    this.uiJuiceFlash = false;
-    this.onHUD && this.onHUD(this.getHUD());
-  }
-
-  // PUBLIC_INTERFACE
-  update(control) {
-    // Prevent all updates once level completed (freeze world).
-    if (this.gameOver || this.levelComplete) return;
-
-    // Player LEFT/RIGHT
-    let dx = 0;
-    if (control.left) dx -= this.player.speed;
-    if (control.right) dx += this.player.speed;
-    this.player.x += dx;
-    this.player.dir = dx > 0 ? 1 : dx < 0 ? -1 : this.player.dir;
-    if (this.player.x < 20) this.player.x = 20;
-    if (this.player.x - this.scrollX > this.width * 0.4)
-      this.scrollX = this.player.x - this.width * 0.4;
-    if (this.scrollX < 0) this.scrollX = 0;
-
-    // Jumping mechanics
-    let onGround = (Math.abs(this.player.y - this.playerGroundY) < 1);
-    if (control.jump && onGround && !this.player.isJumping) {
-      this.player.velocityY = -this.playerJumpStrength;
-      this.player.isJumping = true;
-    }
-    if (!onGround || this.player.velocityY !== 0) {
-      this.player.velocityY += this.playerGravity;
-      this.player.y += this.player.velocityY;
-      if (this.player.y > this.playerGroundY) {
-        this.player.y = this.playerGroundY;
-        this.player.velocityY = 0;
-        this.player.isJumping = false;
+// --- Entities and core logic ---
+function createPlayer() {
+  return {
+    x: 164,
+    y: 380,
+    width: 32,
+    height: 56,
+    speed: 8.5,
+    dir: 1,
+    shootCooldown: 0,
+  };
+}
+function createBullet(x, y, dir) {
+  return {
+    x,
+    y,
+    vx: dir * 25,
+    vy: 0,
+    width: 12,
+    height: 8,
+    dir
+  };
+}
+// Two-way random spawn!
+function spawnEnemy(setEnemies) {
+  const type = randomEnemyType();
+  const fromLeft = Math.random() > 0.5;
+  setEnemies(es =>
+    [
+      ...es,
+      {
+        ...type,
+        x: fromLeft ? -44 : THEME.canvasWidth + 44,
+        y: 410 + Math.round(Math.random() * 100) - (type.key === "bird" ? 100 : 0),
+        fromLeft,
+        dead: false,
+        diedTick: 0
       }
-    } else {
-      this.player.velocityY = 0;
-      this.player.isJumping = false;
-      this.player.y = this.playerGroundY;
-    }
+    ]);
+}
+// Simple rect collision
+function boxCollide(a, b) {
+  return a.x < b.x + b.w && a.x + a.width > b.x && a.y < b.y + b.h && a.y + a.height > b.y;
+}
 
-    // Shooting
-    if (control.shoot && this.player.shootCooldown <= 0) {
-      this._shoot();
-      this.player.shootCooldown = 16;
-      this.effects.push({type:'muzzle', x:this.player.x+this.player.dir*30, y:this.player.y+32, t:0});
-    }
-    if (this.player.shootCooldown > 0) this.player.shootCooldown -= 1;
-
-    // Bullets logic (awards coins and shows floating label, only green zombie effect now)
-    this.bullets.forEach((b,i,arr) => {
-      b.x += b.vx;
-      // Collide with zombies
-      for (let z of this.zombies) {
-        if (!z.dead && z.x < b.x && b.x < z.x+z.w && z.y < b.y && b.y < z.y+z.h) {
-          z.dead = true;
-          z._diedAt = Date.now();
-          z._killedBy = 'bullet';
-          this.zombiesJuiced += 1;
-          this.coins += z.coins; // always +2
-          this.score += 100;
-          arr[i]._hit = true;
-          // Floating coin/score label (always "+2" in neon green)
-          this.effects.push({
-            type: 'label',
-            x: z.x + z.w/2,
-            y: z.y - 13,
-            t: 0,
-            text: "+2",
-            fill: "#39ff14",
-            outline: "#1a1a1a",
-          });
-          // Juicing visual effect
-          this.effects.push({type:'juice', x:z.x+z.w/2, y:z.y+z.h/2, t:0});
-        }
-      }
-    });
-    this.bullets = this.bullets.filter(b => b.x>this.scrollX-60 && b.x<this.scrollX+this.width+60 && !b._hit);
-
-    // Remove dead zombies, staggered fall
-    for (let z of this.zombies) {
-      if (z.dead && !z._falling) {
-        z._falling = true;
-        z._vy = 2+Math.random()*3;
-      }
-      if (z._falling) {
-        z.y += z._vy;
-        z._vy += 0.5;
-      }
-    }
-    this.zombies = this.zombies.filter(z => !z._falling || z.y < this.groundY+90);
-
-    // Enemy zombies: AI walk left
-    for (let z of this.zombies) {
-      if (!z.dead) {
-        z.x -= z.speed;
-        // Respawn if out of view to right
-        if (z.x < this.scrollX-140) {
-          Object.assign(z, this._spawnZombie(this.scrollX + this.width + 120 + Math.random()*80));
-        }
-        // Collide with player
-        if (!z.dead && this._collide(this.player, z)) {
-          this.gameOver = true;
-          this.onGameOver && this.onGameOver();
-        }
-      }
-    }
-
-    // Particle and effect updates: include 'label' for floating reward
-    for (let e of this.effects) {
-      e.t += 1;
-    }
-    this.effects = this.effects.filter(e =>
-      (e.type==="muzzle" && e.t<12) ||
-      (e.type==="juice" && e.t<30) ||
-      (e.type==="ammo" && e.t<500) ||
-      (e.type==="label" && e.t<33)
-    );
-
-    // Level complete state
-    if (this.zombiesJuiced >= this.zombiesToJuice) {
-      this.levelComplete = true;
-      setTimeout(() => {
-        this.onLevelComplete && this.onLevelComplete();
-      }, 2200);
-      return;
-    }
-    this.onHUD && this.onHUD(this.getHUD());
-  }
-
-  // PUBLIC_INTERFACE
-  draw(canvas) {
-    const ctx = canvas.getContext('2d');
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-    // BG
-    this._drawBG(ctx);
-
+// Visuals
+function drawBG(ctx) {
+  // synthwave horizon
+  const w = ctx.canvas.width, h = ctx.canvas.height;
+  const grad = ctx.createLinearGradient(0,0,0, h);
+  grad.addColorStop(0, "#392990");
+  grad.addColorStop(0.46, "#23243a");
+  grad.addColorStop(1, "#111117");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0,0,w,h);
+  ctx.save();
+  ctx.globalAlpha = 0.21;
+  ctx.beginPath();
+  ctx.arc(w/2, 160, 250, 0, Math.PI*2);
+  ctx.fillStyle = "#aa2c69";
+  ctx.shadowColor = "#39ff14";
+  ctx.shadowBlur = 90;
+  ctx.fill();
+  ctx.restore();
+  // synthwave scanlines
+  for (let i=0; i<h; i+=16) {
     ctx.save();
-    ctx.translate(-this.scrollX,0);
-
-    // Ground
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(0, this.groundY, 5000, 120);
-    var grd = ctx.createLinearGradient(0, this.groundY, 0, this.groundY+120);
-    grd.addColorStop(0, "#202026");
-    grd.addColorStop(0.5, "#1a1a1a");
-    grd.addColorStop(1, "#1e2323");
-    ctx.fillStyle = grd;
-    ctx.shadowColor = "#39ff148c";
-    ctx.shadowBlur = 16;
-    ctx.fill();
-    ctx.restore();
-
-    // Neon toxic glow layers, animated
-    let toxicNoise = Math.sin(Date.now()/470)*9;
-    for (let s=1; s<=2; ++s) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(this.scrollX+this.width/1.9, this.groundY+70+toxicNoise*s, 400+70*s, Math.PI, Math.PI*2, false);
-      ctx.lineWidth = 2+s;
-      ctx.strokeStyle = s%2===0? "#39ff142d":"#39ff1477";
-      ctx.shadowColor = "#39ff14aa";
-      ctx.shadowBlur = 24+s*4;
-      ctx.stroke();
-      ctx.restore();
-    }
-
-    // --- Draw zombies
-    for (let z of this.zombies) {
-      this._drawZombie(ctx, z);
-    }
-
-    // Draw player (on top of zombies)
-    this._drawPlayer(ctx, this.player);
-
-    // Bullets
-    for (let b of this.bullets) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.arc(b.x, b.y, 7, 0, 2 * Math.PI, false);
-      ctx.shadowColor = this.theme.accent;
-      ctx.shadowBlur = 14;
-      ctx.fillStyle = this.theme.accent;
-      ctx.globalAlpha = 0.89;
-      ctx.fill();
-      ctx.restore();
-    }
-
-    // Particle/effects, including labels for coin/score (above zombie position)
-    for (let e of this.effects) {
-      if (e.type === 'muzzle') {
-        ctx.save();
-        ctx.globalAlpha = 1-e.t/16;
-        ctx.beginPath();
-        ctx.arc(e.x, e.y, 16-e.t, 0, Math.PI*2);
-        ctx.fillStyle = "#fff2";
-        ctx.shadowColor = "#fff";
-        ctx.shadowBlur = 10;
-        ctx.fill();
-        ctx.restore();
-      }
-      if (e.type === 'juice') {
-        ctx.save();
-        ctx.globalAlpha = 1-e.t/28;
-        ctx.beginPath();
-        ctx.arc(e.x, e.y, 22+e.t*2, 0, Math.PI*2);
-        ctx.fillStyle = this.theme.primary;
-        ctx.shadowColor = "#39ff14cc";
-        ctx.shadowBlur = 35;
-        ctx.fill();
-        ctx.restore();
-      }
-      if (e.type === 'label') {
-        ctx.save();
-        ctx.font = 'bold 22px Segoe UI, Arial, sans-serif';
-        let alpha = Math.max(0, 1 - e.t/32 - 0.21);
-        ctx.globalAlpha = alpha;
-        // Animate upward float
-        let yFloat = e.y - e.t*1.5 - 26*Math.max(0.3,alpha);
-        // Shadow
-        ctx.lineWidth = 4;
-        ctx.strokeStyle = e.outline||'#181718';
-        ctx.strokeText(e.text, e.x-13, yFloat);
-        // Neon-like
-        ctx.lineWidth = 1.2;
-        ctx.strokeStyle = "#fff3";
-        ctx.strokeText(e.text, e.x-13, yFloat-1);
-        // Fill
-        ctx.fillStyle = e.fill;
-        ctx.fillText(e.text, e.x-13, yFloat);
-        ctx.restore();
-      }
-      if (e.type === 'ammo') {
-        ctx.save();
-        ctx.globalAlpha = Math.abs(Math.sin(e.t/10));
-        ctx.beginPath();
-        ctx.rect(e.x-12, e.y-18, 24, 36);
-        ctx.fillStyle = "#FFF";
-        ctx.shadowColor = "#aa2c69";
-        ctx.shadowBlur = 12;
-        ctx.fill();
-        ctx.restore();
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(e.x-7, e.y-12, 14, 24);
-        ctx.fillStyle = this.theme.accent;
-        ctx.globalAlpha = 0.7;
-        ctx.shadowColor = this.theme.primary;
-        ctx.shadowBlur = 12;
-        ctx.fill();
-        ctx.restore();
-      }
-    }
-
-    ctx.restore();
-  }
-
-  // API: get HUD state (zombies juiced; coins, etc)
-  getHUD() {
-    return {
-      level: this.level,
-      score: this.score,
-      coins: this.coins,
-      zombies: this.zombiesJuiced,
-    };
-  }
-
-  // Player shooting
-  _shoot() {
-    this.bullets.push({
-      x: this.player.x + this.player.dir * 32,
-      y: this.player.y + 22,
-      vx: this.player.dir * 20,
-      vy: 0,
-    });
-  }
-
-  // Spawn zombie helper: only green zombies now
-  _spawnZombie(x) {
-    // Only green zombies exist
-    const type = zombieTypes[0];
-    return {
-      x,
-      y: this.groundY - type.h + 8,
-      w: type.w,
-      h: type.h,
-      speed: type.speed + Math.random() * 0.45,
-      dead: false,
-      _falling: false,
-      type: type.name,
-      color: type.color,
-      shadow: type.shadow,
-      head: type.head,
-      eyes: type.eyes,
-      coins: type.coins,
-      label: type.label,
-      labelColor: type.labelColor,
-    };
-  }
-
-  _collide(a, b) {
-    return (
-      a.x < b.x + b.w &&
-      a.x + a.width > b.x &&
-      a.y < b.y + b.h &&
-      a.y + a.height > b.y
-    );
-  }
-
-  // -- Visual helpers
-  _drawBG(ctx) {
-    const grd = ctx.createLinearGradient(0,0,0,this.height);
-    grd.addColorStop(0, "#292940");
-    grd.addColorStop(0.4, "#1a1a1a");
-    grd.addColorStop(1, "#252536");
-    ctx.fillStyle = grd;
-    ctx.fillRect(0,0,this.width,this.height);
-    ctx.save();
-    ctx.globalAlpha = 0.59;
-    ctx.beginPath();
-    ctx.arc(this.width/2, 200+Math.sin(Date.now()/1000)*18, 340, 0, Math.PI*2);
-    ctx.fillStyle = "#39ff1435";
-    ctx.shadowColor = "#39ff14";
-    ctx.shadowBlur = 130;
-    ctx.fill();
-    ctx.restore();
-  }
-
-  _drawPlayer(ctx, p) {
-    ctx.save();
-    ctx.translate(p.x, p.y);
-    // Body
-    ctx.save();
-    ctx.beginPath();
-    ctx.roundRect(-16, 0, 32, 50, 12);
-    ctx.fillStyle = "#1e1e22";
-    ctx.shadowColor = "#39ff14";
-    ctx.shadowBlur = 18;
-    ctx.fill();
-    ctx.restore();
-    // Alien head
-    ctx.save();
-    ctx.beginPath();
-    ctx.ellipse(0, -15, 16, 18, 0, 0, Math.PI * 2);
-    ctx.fillStyle = "#1e1f2f";
-    ctx.shadowColor = "#aa2c69";
-    ctx.shadowBlur = 8;
-    ctx.fill();
-    ctx.restore();
-    // Alien eyes
-    ctx.save();
-    ctx.globalAlpha = 0.86;
-    ctx.beginPath();
-    ctx.ellipse(-6, -8, 5, 7, 0, 0, Math.PI * 2);
-    ctx.ellipse(+6, -8, 5, 7, 0, 0, Math.PI * 2);
+    ctx.globalAlpha = 0.08+(i/h)*0.08;
     ctx.fillStyle = "#39ff14";
-    ctx.shadowColor = "#39ff14";
-    ctx.shadowBlur = 9;
-    ctx.fill();
-    ctx.restore();
-    // Blaster (gun)
-    ctx.save();
-    ctx.rotate(p.dir === 1 ? 0.08 : -0.12);
-    ctx.beginPath();
-    ctx.rect(p.dir === 1 ? 15 : -41,13, 26, 8);
-    ctx.fillStyle = "#2ecffd";
-    ctx.shadowColor = "#2ecffd";
-    ctx.shadowBlur = 5;
-    ctx.globalAlpha = 0.89;
-    ctx.fill();
-    ctx.restore();
-    // Arm
-    ctx.save();
-    ctx.beginPath();
-    ctx.lineWidth = 7;
-    ctx.moveTo(0,12); ctx.lineTo(p.dir*16,28);
-    ctx.strokeStyle = "#39ff14";
-    ctx.shadowColor = "#39ff14";
-    ctx.shadowBlur = 5;
-    ctx.globalAlpha = 0.7;
-    ctx.stroke();
-    ctx.restore();
-    ctx.restore();
-  }
-
-  // PUBLIC_INTERFACE
-  _drawZombie(ctx, z) {
-    ctx.save();
-    ctx.translate(z.x, z.y);
-    // Body
-    ctx.save();
-    ctx.beginPath();
-    ctx.roundRect(-z.w/2, 0, z.w, z.h, Math.max(8,Math.min(16,Math.round(z.w/4))));
-    ctx.fillStyle = z.dead ? "#3ba04e" : z.color;
-    ctx.shadowColor = z.dead ? "#37c84666" : z.shadow;
-    ctx.shadowBlur = z.dead ? 3 : 17;
-    ctx.globalAlpha = z.dead ? 0.65 : 1;
-    ctx.fill();
-    ctx.restore();
-
-    // Head
-    ctx.save();
-    ctx.beginPath();
-    ctx.ellipse(0, -10, Math.max(10, z.w/2), Math.max(7,z.w/2.7), 0, 0, Math.PI * 2);
-    ctx.fillStyle = z.head;
-    ctx.shadowColor = "#39ff14";
-    ctx.shadowBlur = 6;
-    ctx.fill();
-    ctx.restore();
-
-    // Eyes
-    ctx.save();
-    ctx.globalAlpha = z.dead ? 0.33 : 1;
-    ctx.beginPath();
-    ctx.arc(-7, -12, 3, 0, Math.PI*2);
-    ctx.arc(+7, -12, 3, 0, Math.PI*2);
-    ctx.fillStyle = z.eyes;
-    ctx.shadowColor = "#aa2c69";
-    ctx.shadowBlur = 8;
-    ctx.fill();
-    ctx.restore();
-
-    // Mouth
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(0, -3, 8, 0, Math.PI, false);
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = "#aa2c69";
-    ctx.stroke();
-    ctx.restore();
-
+    ctx.fillRect(0, i, w, 3);
     ctx.restore();
   }
 }
 
-export default App;
+function drawPlayer(ctx, p) {
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  // Body
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(-16, 0, 32, 50, 12);
+  ctx.fillStyle = "#1e1e22";
+  ctx.shadowColor = "#39ff14";
+  ctx.shadowBlur = 18;
+  ctx.fill();
+  ctx.restore();
+  // Head
+  ctx.save();
+  ctx.beginPath();
+  ctx.ellipse(0, -15, 16, 18, 0, 0, Math.PI * 2);
+  ctx.fillStyle = "#aa2c69";
+  ctx.shadowColor = "#39ff14";
+  ctx.shadowBlur = 8;
+  ctx.fill();
+  ctx.restore();
+  // Eyes
+  ctx.save();
+  ctx.globalAlpha = 0.88;
+  ctx.beginPath();
+  ctx.ellipse(-6, -8, 5, 7, 0, 0, Math.PI * 2);
+  ctx.ellipse(+6, -8, 5, 7, 0, 0, Math.PI * 2);
+  ctx.fillStyle = "#39ff14";
+  ctx.shadowColor = "#39ff14";
+  ctx.shadowBlur = 8;
+  ctx.fill();
+  ctx.restore();
+  // Blaster
+  ctx.save();
+  ctx.rotate(p.dir === 1 ? 0.06 : -0.11);
+  ctx.beginPath();
+  ctx.rect(p.dir === 1 ? 16 : -41, 18, 26, 8);
+  ctx.fillStyle = "#2ecffd";
+  ctx.shadowColor = "#2ecffd";
+  ctx.shadowBlur = 5;
+  ctx.globalAlpha = 0.89;
+  ctx.fill();
+  ctx.restore();
+  // Arm
+  ctx.save();
+  ctx.beginPath();
+  ctx.lineWidth = 7;
+  ctx.moveTo(0, 12); ctx.lineTo(p.dir*18, 29);
+  ctx.strokeStyle = "#39ff14";
+  ctx.shadowColor = "#39ff14";
+  ctx.shadowBlur = 5;
+  ctx.globalAlpha = 0.7;
+  ctx.stroke();
+  ctx.restore();
+  ctx.restore();
+}
 
+function drawEnemy(ctx, e) {
+  ctx.save();
+  ctx.translate(e.x, e.y);
+
+  if (e.key === 'zombie' || !e.key) {
+    // Main zombies: neon green
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(-e.w/2, 0, e.w, e.h, 12);
+    ctx.fillStyle = e.dead ? "#3ba04e" : e.color;
+    ctx.shadowColor = e.dead ? "#37c84666" : e.shadow;
+    ctx.shadowBlur = e.dead ? 3 : 14;
+    ctx.globalAlpha = e.dead ? 0.49 : 1;
+    ctx.fill();
+    ctx.restore();
+    // Head
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(0, -12, Math.max(10, e.w/2), Math.max(7, e.w/2.8), 0, 0, Math.PI * 2);
+    ctx.fillStyle = e.head;
+    ctx.shadowColor = "#39ff14";
+    ctx.shadowBlur = 5;
+    ctx.fill();
+    ctx.restore();
+    // Eyes
+    ctx.save();
+    ctx.globalAlpha = e.dead ? 0.22 : 1;
+    ctx.beginPath();
+    ctx.arc(-7, -11, 3, 0, Math.PI*2);
+    ctx.arc(+7, -11, 3, 0, Math.PI*2);
+    ctx.fillStyle = e.eye;
+    ctx.shadowColor = "#aa2c69";
+    ctx.shadowBlur = 6;
+    ctx.fill();
+    ctx.restore();
+  } else if (e.key === 'bird') {
+    // Birds: blue hovering
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(0, 8, e.w/2, e.h/2, 0, 0, Math.PI*2);
+    ctx.fillStyle = e.color;
+    ctx.shadowColor = e.shadow;
+    ctx.shadowBlur = 12;
+    ctx.globalAlpha = e.dead ? 0.42 : 1;
+    ctx.fill();
+    ctx.restore();
+    // Wings (animated)
+    ctx.save();
+    ctx.fillStyle = "#fff";
+    ctx.globalAlpha = e.dead ? 0.09 : 0.09 + 0.17 * Math.abs(Math.sin(Date.now()/128));
+    ctx.beginPath();
+    ctx.ellipse(-12, 6, 13, 5, -0.32, 0, Math.PI*2);
+    ctx.ellipse(12, 6, 13, 5, 0.32, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+    // Eye
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(+8, 5, 3, 0, Math.PI*2);
+    ctx.fillStyle = e.eye;
+    ctx.shadowColor = "#2ecffd";
+    ctx.shadowBlur = 7;
+    ctx.globalAlpha = 0.98;
+    ctx.fill();
+    ctx.restore();
+  } else if (e.key === 'bot') {
+    // Robots: pink/neon
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(-e.w/2, 5, e.w, e.h, 13);
+    ctx.fillStyle = e.color;
+    ctx.shadowColor = e.shadow;
+    ctx.shadowBlur = e.dead ? 1.2 : 13;
+    ctx.globalAlpha = e.dead ? 0.28 : 1;
+    ctx.fill();
+    ctx.restore();
+    // Head
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(0, -10, Math.max(12, e.w/2), 16, 0, 0, Math.PI * 2);
+    ctx.fillStyle = e.head;
+    ctx.shadowColor = "#aa2c69";
+    ctx.shadowBlur = 8;
+    ctx.fill();
+    ctx.restore();
+    // Neon 'eye'
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(0, -8, 8, 0, Math.PI*2);
+    ctx.fillStyle = e.eye;
+    ctx.globalAlpha = 0.83;
+    ctx.shadowBlur = 13;
+    ctx.shadowColor = "#fff";
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.restore();
+}
+function drawBullet(ctx, b) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(b.x, b.y, 8, 0, 2 * Math.PI, false);
+  ctx.shadowColor = "#2ecffd";
+  ctx.shadowBlur = 15;
+  ctx.fillStyle = "#2ecffd";
+  ctx.globalAlpha = 0.85;
+  ctx.fill();
+  ctx.restore();
+}
+
+// Add missing modern neon input style (for name prompt)
+if (!document.getElementById('synth-neon-input')) {
+  const style = document.createElement("style");
+  style.id = "synth-neon-input";
+  style.innerHTML = ".neon-input:focus { outline: 2px solid #2ecffd; box-shadow: 0 0 18px #2ecffd99; }";
+  document.head.appendChild(style);
+}
+
+export default App;
