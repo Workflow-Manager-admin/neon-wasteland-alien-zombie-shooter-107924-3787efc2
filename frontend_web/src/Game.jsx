@@ -86,19 +86,38 @@ export default function Game() {
   /* ─── core loop ─── */
   useEffect(() => {
     if (gameState !== "play") return;
-    const ctx = canvasRef.current.getContext("2d");
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    // Acquire 2d context, defensive so we can debug more easily
+    let ctx = canvas.getContext("2d");
+    if (!ctx) {
+      // fallback: try to acquire again
+      ctx = canvas.getContext("2d");
+      if (!ctx) {
+        console.error("[Game.jsx] Could not get canvas 2d context");
+        return;
+      }
+    }
+
+    let animId;
     let last = performance.now();
 
     const loop = (ts) => {
-      const dt = ts - last; last = ts;
+      const dt = ts - last;
+      last = ts;
       tickRef.current++;
 
       updateLogic(dt);
       draw(ctx);
 
-      requestAnimationFrame(loop);
+      animId = requestAnimationFrame(loop);
     };
-    requestAnimationFrame(loop);
+    animId = requestAnimationFrame(loop);
+
+    return () => {
+      if (animId) cancelAnimationFrame(animId);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameState, dims]);
 
@@ -172,29 +191,92 @@ export default function Game() {
 
   /* ───────── draw ───────── */
   function draw(ctx) {
+    // Defensive checks so rendering never silently fails
+    if (!ctx) return;
     const { width, height } = dims;
     ctx.clearRect(0,0,width,height);
     drawBG(ctx,width,height);
 
-    // enemies
-    enemiesRef.current.forEach(e => {
+    // --- Draw Enemies
+    for (const e of enemiesRef.current) {
+      if (e.dead) continue;
       ctx.save();
-      ctx.fillStyle = e.color; ctx.shadowColor = e.color; ctx.shadowBlur = 15;
+
+      // Distinct colors per type for debug
+      let fill;
+      if (e.key === "zombie") fill = "#39ff14";
+      else if (e.key === "bot") fill = "#ea2c97";
+      else if (e.key === "bird") fill = "#2ecffd";
+      else fill = "#aaa";
+
+      ctx.globalAlpha = 0.97;
+      ctx.shadowColor = fill;
+      ctx.shadowBlur = 12;
+      ctx.fillStyle = fill;
+
       if (e.key === "bird") {
         ctx.beginPath();
-        ctx.arc(e.x, e.y, 14, 0, Math.PI * 2);
+        ctx.arc(e.x, e.y, 19, 0, Math.PI * 2);
         ctx.fill();
-      } else {
+        // "bird" eye
+        ctx.globalAlpha = 1.0; ctx.shadowBlur = 0;
+        ctx.beginPath();
+        ctx.arc(e.x+4, e.y-2, 3, 0, Math.PI*2);
+        ctx.fillStyle = "#fff"; ctx.fill();
+      } else if (e.key === "bot") {
         ctx.fillRect(e.x - e.w / 2, e.y - e.h / 2, e.w, e.h);
+        // Simple "eye"
+        ctx.globalAlpha = 1.0; ctx.shadowBlur = 0;
+        ctx.beginPath();
+        ctx.arc(e.x + e.w/4, e.y - e.h/4, 6, 0, Math.PI * 2);
+        ctx.fillStyle = "#fb73fa"; ctx.fill();
+      } else {
+        // Zombie (rect with a head)
+        ctx.fillRect(e.x - e.w/2, e.y - e.h/2 + 12, e.w, e.h - 14);
+        ctx.beginPath();
+        ctx.arc(e.x, e.y - e.h/2 + 20, 16, 0, Math.PI * 2);
+        ctx.fill();
       }
       ctx.restore();
-    });
+    }
 
-    // bullets
-    bulletsRef.current.forEach(b => drawBullet(ctx, b));
+    // --- Draw Bullets (fireballs/lasers)
+    for (const b of bulletsRef.current) {
+      ctx.save();
+      ctx.globalAlpha = 1;
+      ctx.shadowColor = "#2ecffd";
+      ctx.shadowBlur = 13;
+      ctx.fillStyle = "#2ecffd";
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.r || 7, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    }
 
-    // player
-    drawPlayer(ctx, playerRef.current);
+    // --- Draw Player bottom-center (debug: magenta body, neon head)
+    const p = playerRef.current;
+    ctx.save();
+    ctx.translate(p.x, p.y);
+
+    // Body - bottom-aligned rectangle in bright color for visibility
+    ctx.fillStyle = "#9633f9";
+    ctx.shadowColor = "#9633f9";
+    ctx.shadowBlur = 17;
+    ctx.fillRect(-17, -49, 34, 49);
+    // Head - neon accented circle
+    ctx.beginPath();
+    ctx.arc(0, -61, 18, 0, Math.PI*2);
+    ctx.fillStyle = "#39ff14";
+    ctx.shadowColor = "#39ff14";
+    ctx.shadowBlur = 16;
+    ctx.fill();
+    // "Eye"/visor - accent
+    ctx.beginPath();
+    ctx.arc(0, -64, 5, 0, Math.PI*2);
+    ctx.fillStyle = "#aa2c69";
+    ctx.fill();
+
+    ctx.restore();
   }
 
   /* ───────── spawn helper ───────── */
