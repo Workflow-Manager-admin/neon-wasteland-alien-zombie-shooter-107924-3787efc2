@@ -331,10 +331,67 @@ function Game() {
     return () => cancelAnimationFrame(animId);
   }, [gameState]);
 
+  // --- ENEMY SPAWNER USEEFFECT WITH SCORE DEPENDENCY ---
+  useEffect(() => {
+    // 1. Insert debug log to verify spawn effect runs
+    console.log("SPAWN LOOP RUNNING");
+
+    if (gameState !== "playing") return;
+    // Clean up timer on unmount/game over
+    let spawnTimer = null;
+    let isCancelled = false;
+
+    // 2&3. Advanced spawner: adapts spawn interval to score/difficulty
+    function spawnEnemies() {
+      // Calculate spawnDelay: decreases as score increases (minimum 350ms)
+      const baseDelay = 1100;
+      const minDelay = 350;
+      // Each 1200 score increases spawn rate
+      const delay = Math.max(minDelay, baseDelay - Math.floor(score * 0.9));
+      // Pick left/right for both zombie and bird (in independent calls)
+      // a. Zombie
+      setEnemies(prev => {
+        const fromLeft = Math.random() > 0.5;
+        const enemy = {
+          ...ENEMIES[0], // zombie
+          x: fromLeft ? -ENEMIES[0].w : dims.width + ENEMIES[0].w,
+          y: 410 + Math.round(Math.random()*60),
+          fromLeft,
+          dead: false,
+          diedTick: 0
+        };
+        console.log("[SPAWN ZOMBIE]", enemy);
+        return [...prev, enemy];
+      });
+      // b. Bird (independent; birds spawn at higher point)
+      setEnemies(prev => {
+        const fromLeft = Math.random() > 0.5;
+        const enemy = {
+          ...ENEMIES[1], // bird
+          x: fromLeft ? -ENEMIES[1].w : dims.width + ENEMIES[1].w,
+          y: 320 + Math.round(Math.random()*70) - 55,
+          fromLeft,
+          dead: false,
+          diedTick: 0
+        };
+        console.log("[SPAWN BIRD]", enemy);
+        return [...prev, enemy];
+      });
+      // Continue spawning if not cancelled
+      spawnTimer = setTimeout(spawnEnemies, delay);
+    }
+    spawnTimer = setTimeout(spawnEnemies, 600);
+    return () => {
+      isCancelled = true;
+      if (spawnTimer) clearTimeout(spawnTimer);
+    };
+  }, [score, dims.width, gameState]); // run when score or game canvas dims change or playing starts
+
   // Tick: game logic
   useEffect(() => {
     if (gameState !== "playing") return;
 
+    // Player movement
     setPlayer(p => {
       let nx = p.x;
       if (control.left) nx = Math.max(12, nx - p.speed);
@@ -342,13 +399,29 @@ function Game() {
       return { ...p, x:nx, dir: control.face ?? lastDir };
     });
 
-    setBullets(bs => bs.map(b => ({...b, x: b.x + b.vx})).filter(b => b.x > -45 && b.x < dims.width+45));
+    // Bullets movement (we keep this for projectile logic)
+    setBullets(bs =>
+      bs.map(b => ({ ...b, x: b.x + b.vx }))
+        // 5. Filter out off-canvas bullets
+        .filter(b => b.x > -45 && b.x < dims.width + 45)
+    );
 
-    setEnemies(es => es.map(e => ({
-      ...e,
-      x: e.fromLeft ? e.x + e.speed : e.x - e.speed,
-    })).filter(e => e.x > -80 && e.x < dims.width+80 && !e.dead));
+    // --- 4. Move each enemy; render and off-canvas filter ---
+    setEnemies(es =>
+      es
+        .map(e => ({
+          ...e,
+          x: e.fromLeft ? e.x + e.speed : e.x - e.speed
+        }))
+        // 5. Remove enemies gone completely off the canvas
+        .filter(e =>
+          (e.x > -e.w - 16) &&
+          (e.x < dims.width + e.w + 16) &&
+          !e.dead // alive stay; dead filtered separately below
+        )
+    );
 
+    // Bullet collision with enemies (classic)
     setBullets(bs => {
       const newEnemies = [...enemies];
       let scoreAdd = 0;
@@ -359,7 +432,7 @@ function Game() {
           const e = newEnemies[i];
           if (!e.dead && boxCollide(b, {...e, width: e.w, height: e.h})) {
             hit = true;
-            newEnemies[i] = { ...e, dead: true, diedTick: tick};
+            newEnemies[i] = { ...e, dead: true, diedTick: tick };
             scoreAdd += e.score;
             break;
           }
@@ -373,19 +446,15 @@ function Game() {
 
     // Player collision
     for (let e of enemies) {
-      if (!e.dead && boxCollide(player, {...e, width: e.w, height: e.h})) {
+      if (!e.dead && boxCollide(player, { ...e, width: e.w, height: e.h })) {
         setGameState("gameover");
         setTimeout(() => setShowNamePrompt(true), 700);
         return;
       }
     }
 
-    setEnemies(es => es.filter(e => !e.dead || (tick - (e.diedTick||0) < 22)));
-
-    // Enemy spawn
-    if (tick % Math.max(28, 44 - Math.floor(tick/160)) === 0) {
-      spawnEnemy(dims.width, setEnemies, tick);
-    }
+    // Dead enemies fade-out timer, classic
+    setEnemies(es => es.filter(e => !e.dead || (tick - (e.diedTick || 0) < 22)));
   // eslint-disable-next-line
   }, [tick, control, dims, gameState]); // player, enemies, ...
 
