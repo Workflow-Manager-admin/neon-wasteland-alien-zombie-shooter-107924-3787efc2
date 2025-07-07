@@ -118,15 +118,17 @@ function Game({ coinValue = 2, levelGoal: propLevelGoal }) {
 
   // Level kill/portal logic
   useEffect(() => {
+    // Only trigger portal when NOT already showing
     if (
       gameState === "running" &&
       killsThisLevel >= levelGoal &&
       !showPortal
     ) {
-      // Trigger portal sequence
-      pauseGame();
-      setShowPortal(true);
-      setGameState("portal");
+      // Trigger portal sequence: game pauses, overlay takes over, zombies stop
+      pauseGame(); // disables update loop and input
+      setShowPortal(true); // triggers overlay
+      setGameState("portal"); // explicit portal state for transition guards
+      // No further spawns or resets possible until overlay completes
     }
   }, [killsThisLevel, levelGoal, gameState, showPortal, pauseGame]);
 
@@ -156,15 +158,19 @@ function Game({ coinValue = 2, levelGoal: propLevelGoal }) {
 
   // Handler: PortalSacrifice completion (zombies payout coins & advance level)
   // Called ONLY after full animation, not before (do not reset killsThisLevel until after this!)
+  // All transitions are atomic: coins/score only update after overlay completes, not before. This preserves "live" state on overlay
   const handlePortalSacrificeDone = (coinsEarned) => {
-    setCoins(c => c + coinsEarned);
-    setKillsThisLevel(0);       // Reset kill counter for new level
-    setShowPortal(false);
-    setLevel(lvl => lvl + 1);   // Advance the level!
-    // Resume next level after short delay for satisfaction
+    // Prevent accidental double triggers: only run if portal is visible
+    if (!showPortal) return;
+
+    setCoins(c => c + coinsEarned);         // Coins are awarded after sacrifice, not before
+    setKillsThisLevel(0);                   // Reset kill counter for new level
+    setShowPortal(false);                   // Overlay clears
+    setLevel(lvl => lvl + 1);               // Advance the level!
+    // Resume next level after short delay for satisfaction (must NOT allow spawns or AI prior)
     setTimeout(() => {
-      resumeGame();
-      startGame(); // Triggers new GameWorld, new zombies, etc.
+      resumeGame();                         // Unlock input/AI
+      startGame();                          // Triggers new GameWorld, new zombies, etc.
     }, 820);
   };
 
@@ -192,6 +198,8 @@ function Game({ coinValue = 2, levelGoal: propLevelGoal }) {
     }
 
     if (showPortal && killsThisLevel > 0) {
+      // PortalSacrifice overlay takes over—while visible, game world is hard-paused, no transitions or respawns possible
+      // Live kill count and coins are preserved/only updated on completion event
       return (
         <div className="game-overlay">
           <PortalSacrifice 
