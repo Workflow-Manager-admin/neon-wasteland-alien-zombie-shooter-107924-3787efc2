@@ -78,7 +78,13 @@ function App() {
   const [control, setControl] = useState({ left: false, right: false, shoot: false, jump: false });
   const [mobile, setMobile] = useState(false);
 
-  // Remove old pendingSacrifice/portalCoinsPayout state, handled by activeSacrifice
+  // Internal refs for main game objects
+  const canvasRef = useRef();
+  const world = useRef(null);
+
+  // Overlay lock refs must ALWAYS be created at the top level (not in conditional or render logic)
+  const overlayActiveRef = useRef(false);
+  const noZombiesRef = useRef(false);
 
   // See if a round just finished to start portal-sacrifice
   useEffect(() => {
@@ -111,14 +117,13 @@ function App() {
   // Each HUD update (from GameWorld), track zombies killed independently
   useEffect(() => {
     if (gameState === 'running' || gameState === 'over' || gameState === 'complete') {
-      // Track max zombies juiced seen this round
       setZombiesKilledThisRound(hud.zombies || 0);
     } else if (gameState === 'menu') {
       setZombiesKilledThisRound(0);
     }
   }, [hud.zombies, gameState]);
 
-  // Remove floats after animation end (1.12s) -- hook must live at the top level!
+  // Remove floats after animation end (1.12s)
   useEffect(() => {
     if (activeSacrifice.floats.length > 0) {
       const timer = setTimeout(() => {
@@ -129,10 +134,6 @@ function App() {
       return () => clearTimeout(timer);
     }
   }, [activeSacrifice.floats]);
-
-  // Internal refs for main game objects
-  const canvasRef = useRef();
-  const world = useRef(null);
 
   // Detect mobile
   useEffect(() => {
@@ -247,7 +248,7 @@ function App() {
 
     // Next: Portal Sacrifice overlay - only show if zombies were killed and we're in "sacrifice" mode
     if (activeSacrifice.show && gameState === 'complete' && activeSacrifice.count > 0) {
-      // Handler for live per-zombie increment as they drop in PortalSacrifice
+      // Each drop fires as zombie enters portal (triggers "+2" float & live counter)
       const onSacrificeDrop = (zNum) => {
         setActiveSacrifice(prev => ({
           ...prev,
@@ -257,15 +258,17 @@ function App() {
         }));
       };
 
+      // Allow reward payout and round reset only ONCE per overlay instance
       const onSacrificeComplete = (totalCoins) => {
-        // (a) update coins & zombiesSacrificed
+        if (overlayActiveRef.current) return;
+        overlayActiveRef.current = true;
+
         setZombiesSacrificed(prev => prev + activeSacrifice.count);
         setHud(hudPrev => ({
           ...hudPrev,
           coins: hudPrev.coins + totalCoins,
           zombies: 0,
         }));
-        // (b) closes overlay & (c) resets kills after the sacrifice
         setActiveSacrifice(prev => ({
           ...prev,
           show: false,
@@ -274,9 +277,9 @@ function App() {
           liveCoinsEarned: 0,
           floats: [],
         }));
-        // (d) only reset zombiesKilledThisRound *AFTER* overlay, start new round
         setTimeout(() => {
           setZombiesKilledThisRound(0);
+          overlayActiveRef.current = false;
           startGame();
         }, 1280);
       };
@@ -332,11 +335,16 @@ function App() {
       );
     }
 
-    // If round ends and no zombies were killed, show very brief empty overlay (no stuck at 0).
+    // If round ends and no zombies were killed, show brief overlay and robustly lock input until round transitions.
     if (gameState === 'complete' && (!activeSacrifice.count || zombiesKilledThisRound === 0)) {
-      setTimeout(() => {
-        startGame();
-      }, 500);
+      if (!noZombiesRef.current) {
+        noZombiesRef.current = true;
+        setTimeout(() => {
+          setZombiesKilledThisRound(0);
+          noZombiesRef.current = false;
+          startGame();
+        }, 700);
+      }
       return (
         <div className="game-overlay neon-text">
           No zombies to sacrifice!
@@ -647,12 +655,8 @@ class GameWorld {
     // Level complete state
     if (this.zombiesJuiced >= this.zombiesToJuice) {
       this.levelComplete = true;
-      // Don't auto-reset, just call onLevelComplete and stop updating
       setTimeout(() => {
-        // this.level += 1;
-        // this.reset();
         this.onLevelComplete && this.onLevelComplete();
-        // Pause world; App will reset/start new round after sacrifice
       }, 2200);
       return;
     }
@@ -966,3 +970,4 @@ class GameWorld {
 }
 
 export default App;
+
