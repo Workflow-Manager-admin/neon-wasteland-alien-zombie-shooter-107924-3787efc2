@@ -163,16 +163,29 @@ function App() {
 
   // Game loop
   useAnimationFrame((ts) => {
-    if (gameState === 'running' && canvasRef.current && world.current) {
+    // Only update/draw world if NOT complete (i.e. no overlay/sacrifice is active)
+    if (
+      gameState === 'running' &&
+      canvasRef.current &&
+      world.current &&
+      !(activeSacrifice.show && gameState === 'complete')
+    ) {
       world.current.update(control);
       world.current.draw(canvasRef.current);
     }
-  }, gameState === 'running');
+    // If frozen for sacrifice overlay, lock world state (draw once only)
+    if (
+      (gameState === 'complete' && activeSacrifice.show && world.current && canvasRef.current)
+    ) {
+      world.current.draw(canvasRef.current);
+    }
+  }, gameState === 'running' || (gameState === 'complete' && activeSacrifice.show));
 
   // Controls: keyboard
   useEffect(() => {
     const keydown = (e) => {
-      if (gameState !== 'running') return;
+      // Block all player input when portal sacrifice overlay is active
+      if (gameState !== 'running' || (activeSacrifice.show && gameState === 'complete')) return;
       if (["ArrowLeft", "a", "A"].includes(e.key)) setControl(s => ({ ...s, left: true }));
       if (["ArrowRight", "d", "D"].includes(e.key)) setControl(s => ({ ...s, right: true }));
       if (["ArrowUp"].includes(e.key) && !e.repeat) setControl(s => ({ ...s, jump: true }));
@@ -190,10 +203,11 @@ function App() {
       window.removeEventListener('keydown', keydown);
       window.removeEventListener('keyup', keyup);
     };
-  }, [gameState]);
+  }, [gameState, activeSacrifice.show]);
 
   // Mobile: onscreen control handler
   const handleTouch = (type, enable) => {
+    if (activeSacrifice.show && gameState === 'complete') return; // no input during overlay
     if (type === 'left') setControl(s => ({ ...s, left: enable }));
     if (type === 'right') setControl(s => ({ ...s, right: enable }));
     if (type === 'shoot') setControl(s => ({ ...s, shoot: enable }));
@@ -202,6 +216,7 @@ function App() {
 
   // Button click (shoot or jump for mobile)
   const handleButtonClick = (type) => {
+    if (activeSacrifice.show && gameState === 'complete') return; // block all input during portal overlay
     if (type === 'shoot') {
       setControl(s => ({ ...s, shoot: true }));
       setTimeout(() => setControl(s => ({ ...s, shoot: false })), 80);
@@ -517,6 +532,7 @@ class GameWorld {
 
   // PUBLIC_INTERFACE
   update(control) {
+    // Prevent all updates once level completed (freeze world).
     if (this.gameOver || this.levelComplete) return;
 
     // Player LEFT/RIGHT
