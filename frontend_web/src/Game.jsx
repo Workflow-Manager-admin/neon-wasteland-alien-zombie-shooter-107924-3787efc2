@@ -33,6 +33,7 @@ const getDims = () =>{
 
 /* ─────────── REACT GAME COMPONENT ─────────── */
 export default function Game(){
+  console.log("[Game.jsx] FUNCTION BODY RUNS");
 
   /* Insert debug log at top of startGame() */
   function startGame() {
@@ -168,9 +169,14 @@ export default function Game(){
     // enemies
     enemiesRef.current.forEach(e=>{
       ctx.save();
-      ctx.fillStyle = e.color; ctx.shadowColor=e.color; ctx.shadowBlur=15;
-      if(e.key==="bird") ctx.beginPath(),ctx.arc(e.x,e.y,14,0,Math.PI*2),ctx.fill();
-      else ctx.fillRect(e.x-e.w/2,e.y-e.h/2,e.w,e.h);
+      ctx.fillStyle = e.color; ctx.shadowColor = e.color; ctx.shadowBlur = 15;
+      if (e.key === "bird") {
+        ctx.beginPath();
+        ctx.arc(e.x, e.y, 14, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.fillRect(e.x - e.w / 2, e.y - e.h / 2, e.w, e.h);
+      }
       ctx.restore();
     });
 

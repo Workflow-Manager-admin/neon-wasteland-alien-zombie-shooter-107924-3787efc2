@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import './App.css';
 import supabase from './supabaseClient';
+import Game from './Game.jsx';
 
 // Neon synthwave theme
 const THEME = {
@@ -47,6 +48,9 @@ function useAnimationFrame(callback, running = true) {
 // PUBLIC_INTERFACE
 function App() {
   // State
+  React.useEffect(() => {
+    console.log("[App.jsx] Mounted");
+  }, []);
   const [gameState, setGameState] = useState('menu');
   const [score, setScore] = useState(0);
   const [playerName, setPlayerName] = useState('');
@@ -411,6 +415,8 @@ function App() {
         />
         <GameOverlay />
       </div>
+      {/* TEMP: Mount Game.jsx directly for debug */}
+      <Game />
       <NeonControls />
       <footer className="footer-note">2024 &copy; Neon Synth Zombie Shooter</footer>
     </div>
