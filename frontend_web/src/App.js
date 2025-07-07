@@ -60,24 +60,63 @@ function App() {
   // Tracks how many zombies have ever been sacrificed in this session.
   const [zombiesSacrificed, setZombiesSacrificed] = useState(0);
 
+  // Dedicated tracking of zombies killed in the last round
+  const [zombiesKilledThisRound, setZombiesKilledThisRound] = useState(0);
+
+  // Track "live" sacrifice process (shows running tally as zombies drop)
+  const [activeSacrifice, setActiveSacrifice] = useState({
+    show: false,
+    count: 0, // how many zombies to sacrifice
+    coins: 0, // starting coins at sacrifice
+    coinValue: 2,
+    liveZombiesSacrificed: 0,
+    liveCoinsEarned: 0, // For live "+N" update
+    floats: [], // Array of floating "+N"
+  });
+
   // For control state and canvas focus
   const [control, setControl] = useState({ left: false, right: false, shoot: false, jump: false });
   const [mobile, setMobile] = useState(false);
 
-  // Portal Sacrifice sequence state (for level end overlay)
-  const [pendingSacrifice, setPendingSacrifice] = useState(false);
-  const [portalCoinsPayout, setPortalCoinsPayout] = useState(0);
+  // Remove old pendingSacrifice/portalCoinsPayout state, handled by activeSacrifice
 
+  // See if a round just finished to start portal-sacrifice
   useEffect(() => {
     if (gameState === 'complete') {
-      setPendingSacrifice(true);
-      setPortalCoinsPayout(0);
+      // On round complete, start the portal-sacrifice if zombies were killed
+      setActiveSacrifice({
+        show: true,
+        count: zombiesKilledThisRound,
+        coins: hud.coins,
+        coinValue: 2,
+        liveZombiesSacrificed: 0,
+        liveCoinsEarned: 0,
+        floats: [],
+      });
+    } else if (gameState !== 'complete') {
+      // Hide sacrifice, always reset all live counts/state
+      setActiveSacrifice({
+        show: false,
+        count: 0,
+        coins: hud.coins,
+        coinValue: 2,
+        liveZombiesSacrificed: 0,
+        liveCoinsEarned: 0,
+        floats: [],
+      });
     }
-    if (gameState !== 'complete') {
-      setPendingSacrifice(false);
-      setPortalCoinsPayout(0);
-    }
+  // eslint-disable-next-line
   }, [gameState]);
+
+  // Each HUD update (from GameWorld), track zombies killed independently
+  useEffect(() => {
+    if (gameState === 'running' || gameState === 'over' || gameState === 'complete') {
+      // Track max zombies juiced seen this round (reset if game not running - safety)
+      setZombiesKilledThisRound(hud.zombies || 0);
+    } else if (gameState === 'menu') {
+      setZombiesKilledThisRound(0);
+    }
+  }, [hud.zombies, gameState]);
 
   // Internal refs for main game objects
   const canvasRef = useRef();
@@ -179,35 +218,114 @@ function App() {
       );
     }
 
-    // Sacrifice overlay: show portal, animate zombies drop-in, instant payout, floating "+X Coins" when batch complete
-    if (gameState === 'complete' && pendingSacrifice) {
-      const handleSacrificeComplete = (coinsAwarded) => {
-        // Increment coins and sacrificed count immediately
-        setPortalCoinsPayout(coinsAwarded);
-        setZombiesSacrificed(prev => prev + hud.zombies);
+    // Next: Portal Sacrifice overlay - only show if zombies were killed and we're in "sacrifice" mode
+    if (activeSacrifice.show && gameState === 'complete' && activeSacrifice.count > 0) {
+      // Handler for live per-zombie increment as they drop in PortalSacrifice
+      const onSacrificeDrop = (zNum) => {
+        // For each zombie drop, increment both live coins and sacrificed
+        setActiveSacrifice(prev => ({
+          ...prev,
+          liveZombiesSacrificed: prev.liveZombiesSacrificed + 1,
+          liveCoinsEarned: prev.liveCoinsEarned + prev.coinValue,
+          floats: [...prev.floats, { id: Date.now() + Math.random(), value: '+' + prev.coinValue }]
+        }));
+      };
+      // Handler for batch complete (when all zombies go through portal & float animation - finalize awards)
+      const onSacrificeComplete = (totalCoins) => {
+        // Update permanent game stats (session total, HUD coins, wipe killed count for next round)
+        setZombiesSacrificed(prev => prev + activeSacrifice.count);
         setHud(hudPrev => ({
           ...hudPrev,
-          coins: hudPrev.coins + coinsAwarded,
+          coins: hudPrev.coins + totalCoins, // parent coins
           zombies: 0,
         }));
-        // After payout+float, restart next round
+        setActiveSacrifice(prev => ({
+          ...prev,
+          show: false,
+          count: 0,
+          liveZombiesSacrificed: 0,
+          liveCoinsEarned: 0,
+          floats: [],
+        }));
+        setZombiesKilledThisRound(0); // Reset killed after finalization
+
         setTimeout(() => {
-          setPendingSacrifice(false);
-          setPortalCoinsPayout(0);
           startGame();
-        }, 1800);
+        }, 1600); // Enough float+beat
       };
+
+      // "Live" display counts: what would appear on the overlay as zombies drop in portal
+      const liveZombiesSacrificed = activeSacrifice.liveZombiesSacrificed;
+      const liveCoins = activeSacrifice.coins + activeSacrifice.liveCoinsEarned;
+      // Render floating "+N" coins (animate, then remove)
+      // Remove floats after animation end (1.12s)
+      useEffect(() => {
+        if (activeSacrifice.floats.length > 0) {
+          const timer = setTimeout(() => {
+            setActiveSacrifice(prev =>
+              ({ ...prev, floats: prev.floats.length ? prev.floats.slice(1) : [] })
+            );
+          }, 1060);
+          return () => clearTimeout(timer);
+        }
+      }, [activeSacrifice.floats]);
 
       return (
         <div className="game-overlay">
           <PortalSacrifice
-            zombieCount={hud.zombies}
-            coinValue={2}
-            coins={hud.coins}
-            onSacrificeComplete={handleSacrificeComplete}
+            zombieCount={activeSacrifice.count}
+            coinValue={activeSacrifice.coinValue}
+            coins={activeSacrifice.coins}
+            onSacrificeDrop={onSacrificeDrop}
+            onSacrificeComplete={onSacrificeComplete}
           />
-          <div className="big-score neon-text" style={{marginTop:'1em'}}>Zombies Sacrificed: {zombiesSacrificed + hud.zombies}</div>
-          <div className="coins neon-glow">Coins: <span>{hud.coins + portalCoinsPayout}</span></div>
+          <div className="big-score neon-text" style={{marginTop:'1em'}}>
+            Zombies Sacrificed: {zombiesSacrificed + liveZombiesSacrificed}
+          </div>
+          <div className="coins neon-glow">Coins: <span>{liveCoins}</span></div>
+          {/* Floating "+N" coins stack */}
+          <div style={{
+            position: "absolute", left: "50%", top: "48%", width: 180, transform: "translate(-50%, 0)", pointerEvents: "none"
+          }}>
+            {activeSacrifice.floats.map(f =>
+              <div
+                key={f.id}
+                style={{
+                  color: "#ffef50",
+                  fontWeight: "bold",
+                  textShadow: "0 0 15px #fff944, 0 0 30px #aa2c695c, 0 1px 2px #181925",
+                  fontSize: "1.7em",
+                  marginBottom: "-15px",
+                  animation: "portal-float-up 1s cubic-bezier(.62,.09,.51,1.01)",
+                  pointerEvents: "none",
+                  opacity: 0.91,
+                }}>
+                {f.value} <span style={{
+                  display: "inline-block",
+                  width: "1.1em",
+                  height: "1.1em",
+                  background: "radial-gradient(ellipse at 60% 35%,#ffef50 90%,#aa2c69 130%)",
+                  boxShadow: "0 0 12px #f3f14b99",
+                  borderRadius: "50%",
+                  border: "2px solid #7d6c28",
+                  marginLeft: 3,
+                  verticalAlign: "middle",
+                }}/>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // If round ends and no zombies were killed, show very brief empty overlay (no stuck at 0).
+    if (gameState === 'complete' && (!activeSacrifice.count || zombiesKilledThisRound === 0)) {
+      setTimeout(() => {
+        startGame();
+      }, 500);
+      return (
+        <div className="game-overlay neon-text">
+          No zombies to sacrifice!
         </div>
       );
     }
@@ -227,29 +345,49 @@ function App() {
   };
 
   // HUD component
-  const HUD = () => (
-    <div className="hud-container">
-      <div className="hud-left">
-        <div className="hud-label"><span className="zombie-icon"/> x {hud.zombies} / {world.current?.zombiesToJuice ?? 6} </div>
+  const HUD = () => {
+    // If we're pending a sacrifice, show live count and never let it display 0 if about to sacrifice
+    let displayZombiesSacrificed =
+      activeSacrifice.show && activeSacrifice.count > 0
+        ? zombiesSacrificed
+        : zombiesSacrificed;
+    if (activeSacrifice.show && activeSacrifice.count > 0) {
+      displayZombiesSacrificed = zombiesSacrificed + activeSacrifice.liveZombiesSacrificed;
+    }
+    // Always show latest HUD/zombie-killed state for juiced count, never 0 during sacrifice
+    const zombiesDisplay =
+      (activeSacrifice.show && activeSacrifice.count > 0)
+        ? zombiesKilledThisRound
+        : hud.zombies;
+
+    return (
+      <div className="hud-container">
+        <div className="hud-left">
+          <div className="hud-label">
+            <span className="zombie-icon"/> x {zombiesDisplay} / {world.current?.zombiesToJuice ?? 6}
+          </div>
+        </div>
+        <div className="hud-center">
+          <div className="hud-title">LEVEL {hud.level}</div>
+        </div>
+        <div className="hud-right" style={{ flexDirection: "column", alignItems: "flex-end" }}>
+          <div className="hud-label coins"><span className="coin-icon"/> {
+            activeSacrifice.show ? activeSacrifice.coins + activeSacrifice.liveCoinsEarned : hud.coins
+          }</div>
+          <p style={{
+              margin: "2px 0 0 0",
+              color: THEME.primary,
+              fontWeight: 600,
+              fontSize: "0.95em",
+              textShadow: "0 0 5px #39ff14c7",
+              letterSpacing: ".01em"
+          }}>
+            Zombies Sacrificed: {displayZombiesSacrificed}
+          </p>
+        </div>
       </div>
-      <div className="hud-center">
-        <div className="hud-title">LEVEL {hud.level}</div>
-      </div>
-      <div className="hud-right" style={{ flexDirection: "column", alignItems: "flex-end" }}>
-        <div className="hud-label coins"><span className="coin-icon"/> {hud.coins}</div>
-        <p style={{
-            margin: "2px 0 0 0",
-            color: THEME.primary,
-            fontWeight: 600,
-            fontSize: "0.95em",
-            textShadow: "0 0 5px #39ff14c7",
-            letterSpacing: ".01em"
-        }}>
-          Zombies Sacrificed: {zombiesSacrificed}
-        </p>
-      </div>
-    </div>
-  );
+    );
+  };
 
   // JuiceMeter has been removed for Portal Sacrifice system
 

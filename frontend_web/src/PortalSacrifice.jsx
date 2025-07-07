@@ -12,8 +12,9 @@ import React, { useEffect, useState, useRef, useCallback } from "react";
  *  - coinValue: coins per zombie (default: 2)
  *  - coins: current coins held (for display)
  *  - onSacrificeComplete: function (coinsAwarded) called at end of sequence (awards coins)
+ *  - onSacrificeDrop: function (zombieIndex) called as each zombie is sacrificed
  */
-function PortalSacrifice({ zombieCount = 0, coinValue = 2, coins = 0, onSacrificeComplete }) {
+function PortalSacrifice({ zombieCount = 0, coinValue = 2, coins = 0, onSacrificeComplete, onSacrificeDrop }) {
   // [0,1,...n-1]
   const [dropping, setDropping] = useState([]); // indices of zombies in effect
   const [floating, setFloating] = useState(false); // controls '+X Coins'
@@ -22,7 +23,7 @@ function PortalSacrifice({ zombieCount = 0, coinValue = 2, coins = 0, onSacrific
   const dropTimers = useRef([]);
   const totalCoins = zombieCount * coinValue;
 
-  // Animate zombie drop-in, staggered
+  // Animate zombie drop-in, staggered, call parent's callback for each drop.
   const runSacrifice = useCallback(() => {
     setDropping([]);
     setFinished(false);
@@ -30,12 +31,13 @@ function PortalSacrifice({ zombieCount = 0, coinValue = 2, coins = 0, onSacrific
     setLocalCoins(coins);
     dropTimers.current.forEach(clearTimeout);
     dropTimers.current = [];
-    // Each zombie drops in, 220ms stagger
+    // Each zombie drops in, with stagger. Notify parent for live counter update.
     for (let i = 0; i < zombieCount; ++i) {
       dropTimers.current.push(
         setTimeout(() => {
           setDropping(curr => [...curr, i]);
-          // Each zombie increments coins immediately
+          // Parent notification: each zombie 'entered' portal, trigger coin/sacrifice increment
+          if (typeof onSacrificeDrop === "function") onSacrificeDrop(i + 1);
           setLocalCoins(c => c + coinValue);
         }, i * 220)
       );
@@ -58,7 +60,7 @@ function PortalSacrifice({ zombieCount = 0, coinValue = 2, coins = 0, onSacrific
       }, zombieCount * 220 + 1580)
     );
   // eslint-disable-next-line
-  }, [zombieCount, coinValue, coins, onSacrificeComplete]);
+  }, [zombieCount, coinValue, coins, onSacrificeComplete, onSacrificeDrop]);
 
   // AUTO: trigger drop-in when zombieCount > 0 and not finished
   useEffect(() => {
