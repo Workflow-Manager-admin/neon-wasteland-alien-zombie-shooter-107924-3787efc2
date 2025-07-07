@@ -94,6 +94,8 @@ export default function Game(){
 
   /* ───────── update world ───────── */
   function updateLogic(dt){
+    // Instrument: log tick and enemies count at every call (top of updateLogic)
+    console.log("tick", tickRef.current, "enemies:", enemiesRef.current.length);
 
     const p = playerRef.current;
     /* move */
@@ -108,8 +110,8 @@ export default function Game(){
     }
     p.cd -= dt;
 
-    /* bullets move */
-    bulletsRef.current = bulletsRef.current
+    /* bullets move -- always shallow clone before map/filter */
+    bulletsRef.current = [...bulletsRef.current]
       .map(b=>({...b,x:b.x+b.vx}))
       .filter(b=> b.x>-50 && b.x<dims.width+50);
 
@@ -117,12 +119,14 @@ export default function Game(){
     spawnTimer.current += dt;
     const targetDelay = Math.max(400, 1500 - score*40); // faster when score high
     if(spawnTimer.current > targetDelay){
+      // Instrument: log when spawning and show targetDelay
+      console.log("SPAWN!", targetDelay);
       spawnTimer.current = 0;
       spawnEnemy();
     }
 
-    /* move enemies */
-    enemiesRef.current = enemiesRef.current
+    /* move enemies -- always shallow clone before map/filter */
+    enemiesRef.current = [...enemiesRef.current]
       .map(e=>({...e,x:e.x+e.vx}))
       .filter(e=> e.x>-e.w-60 && e.x<dims.width+e.w+60 && !e.dead);
 
@@ -137,7 +141,8 @@ export default function Game(){
         }
       });
     });
-    bulletsRef.current = bulletsRef.current.filter(b=>!b._kill);
+    // Always shallow clone prior to filter for strict mode safety
+    bulletsRef.current = [...bulletsRef.current].filter(b=>!b._kill);
 
     /* player collision => game over */
     enemiesRef.current.forEach(e=>{
@@ -200,6 +205,8 @@ export default function Game(){
     enemiesRef.current=[]; bulletsRef.current=[];
     playerRef.current={x:120,y:dims.height-210,w:32,h:56,dir:1,cd:0};
     setScore(0); setNP(false); setStatus("");
+    // Optionally: force spawn an enemy immediately
+    spawnEnemy();
   }
 
   /* ───────── UI elements (unchanged HUD / controls) ───────── */
