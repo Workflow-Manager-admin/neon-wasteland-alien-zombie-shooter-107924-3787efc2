@@ -34,6 +34,12 @@ const getDims = () =>{
 /* ─────────── REACT GAME COMPONENT ─────────── */
 export default function Game(){
 
+  /* Insert debug log at top of startGame() */
+  function startGame() {
+    console.log('🎮 Game Started');
+    // original start/reset logic goes here if/when present
+  }
+
   /* ─── state ─── */
   const [dims,setDims]      = useState(getDims());
   const [gameState,setGS]   = useState("menu");   // menu | play | over
