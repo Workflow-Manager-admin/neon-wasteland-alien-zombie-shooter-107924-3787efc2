@@ -38,16 +38,18 @@ const getDims = () =>{
 export default function Game(){
   console.log("[Game.jsx] FUNCTION BODY RUNS");
 
-  // Add logging to monitor gameState changes and rendering
+  // --- Add debug logging for useEffect on gameState ---
   useEffect(() => {
+    console.log("[Game.jsx] useEffect([gameState]) fired, current gameState:", gameState);
     console.log(`[Game.jsx] gameState changed -->`, gameState);
   }, [gameState]);
 
-  /* Insert debug log at top of startGame() */
+  // Insert debug log at top of startGame, before/after setGS
   function startGame() {
-    console.log('🎮 Game Started (startGame called!)');
-    // Will update game state to "play"
+    console.log("[Game.jsx] Start Game CLICKED");
+    console.log("[Game.jsx] gameState before setGS:", gameState);
     setGS("play");
+    console.log("[Game.jsx] (after setGS) gameState (should still be previous):", gameState);
     // Optionally, you could also call reset() here if the correct effect is to start from a clean state.
   }
 
@@ -269,8 +271,12 @@ export default function Game(){
             <button
               className="neon-btn"
               onClick={() => {
-                console.log("[Game.jsx] Start Game clicked");
+                // --- Insert req: log for Start Game click and subsequent state ---
+                console.log("Start Game CLICKED");
+                console.log("[Game.jsx] <Start Game> onClick: gameState before setGS:", gameState);
                 startGame();
+                // Logging immediately after setGS still logs the previous state due to React's async batching.
+                console.log("[Game.jsx] <Start Game> onClick: gameState after setGS (should still be previous):", gameState);
               }}
               autoFocus
             >Start Game</button>
