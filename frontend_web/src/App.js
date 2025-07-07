@@ -111,7 +111,7 @@ function App() {
   // Each HUD update (from GameWorld), track zombies killed independently
   useEffect(() => {
     if (gameState === 'running' || gameState === 'over' || gameState === 'complete') {
-      // Track max zombies juiced seen this round (reset if game not running - safety)
+      // Track max zombies juiced seen this round
       setZombiesKilledThisRound(hud.zombies || 0);
     } else if (gameState === 'menu') {
       setZombiesKilledThisRound(0);
@@ -243,12 +243,14 @@ function App() {
       };
 
       const onSacrificeComplete = (totalCoins) => {
+        // (a) update coins & zombiesSacrificed
         setZombiesSacrificed(prev => prev + activeSacrifice.count);
         setHud(hudPrev => ({
           ...hudPrev,
-          coins: hudPrev.coins + totalCoins, // parent coins
+          coins: hudPrev.coins + totalCoins,
           zombies: 0,
         }));
+        // (b) closes overlay & (c) resets kills after the sacrifice
         setActiveSacrifice(prev => ({
           ...prev,
           show: false,
@@ -257,11 +259,11 @@ function App() {
           liveCoinsEarned: 0,
           floats: [],
         }));
-        setZombiesKilledThisRound(0); // Reset killed after finalization
-
+        // (d) only reset zombiesKilledThisRound *AFTER* overlay, start new round
         setTimeout(() => {
+          setZombiesKilledThisRound(0);
           startGame();
-        }, 1600);
+        }, 1280);
       };
 
       const liveZombiesSacrificed = activeSacrifice.liveZombiesSacrificed;
@@ -629,11 +631,14 @@ class GameWorld {
     // Level complete state
     if (this.zombiesJuiced >= this.zombiesToJuice) {
       this.levelComplete = true;
+      // Don't auto-reset, just call onLevelComplete and stop updating
       setTimeout(() => {
-        this.level += 1;
-        this.reset();
+        // this.level += 1;
+        // this.reset();
         this.onLevelComplete && this.onLevelComplete();
+        // Pause world; App will reset/start new round after sacrifice
       }, 2200);
+      return;
     }
     this.onHUD && this.onHUD(this.getHUD());
   }
