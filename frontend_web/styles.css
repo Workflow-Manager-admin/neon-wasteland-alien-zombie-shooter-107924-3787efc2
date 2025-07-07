@@ -65,9 +65,12 @@ html, body, #root, .neon-app-root {
   font-weight: 600;
   color: var(--neon-primary);
   text-shadow: 0 0 4px var(--neon-primary);
-  display: flex; align-items: center;
+  display: flex; 
+  align-items: center;
   min-width: 0;
   flex-shrink: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .hud-label.coins { color: var(--neon-accent);}
 .zombie-icon, .coin-icon {
@@ -103,6 +106,15 @@ html, body, #root, .neon-app-root {
   display: flex;
   align-items: center;
   justify-content: center;
+  box-sizing: border-box;
+  /* For safe mobile scroll, never allows horizontal scrollbars*/
+  overscroll-behavior: contain;
+}
+.game-canvas-container:focus-within {
+  outline: 2.5px solid var(--neon-accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 3px #39ff1490 inset;
+  border-radius: var(--border-radius);
 }
 
 canvas#game-canvas {
@@ -118,6 +130,14 @@ canvas#game-canvas {
   background: #191925;
   margin: 0 auto;
   object-fit: contain;
+  /* Responsive smoothing: ensures canvas never causes overflow issues */
+  box-sizing: border-box;
+  outline: none;
+}
+canvas#game-canvas:focus-visible {
+  outline: 2.5px solid var(--neon-accent);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px #aae2ff51;
 }
 
 .game-overlay {
@@ -203,6 +223,17 @@ button.neon-btn:focus {
   background: #d13d98;
   box-shadow: 0 0 30px #aa2c69cc, 0 2px 12px #39ff1450 inset;
 }
+.neon-btn:focus-visible, button.neon-btn:focus-visible,
+.neon-control-btn:focus-visible {
+  outline: 2.5px solid var(--neon-primary);
+  outline-offset: 1.5px;
+  box-shadow: 0 0 0 6px var(--neon-accent)33;
+  background: #1f0f19;
+}
+.neon-control-btn:focus-visible {
+  background: var(--neon-primary);
+  color: #161616;
+}
 
 .btn-panel,
 .btn-panel-mobile {
@@ -277,42 +308,46 @@ button.neon-btn:focus {
   background: none;
 }
 @media (max-width: 900px) {
-  .hud-container,
-  .game-canvas-container {
+  .hud-container, .game-canvas-container {
     width: 99vw !important;
     min-width: 0 !important;
     max-width: 99vw !important;
   }
   .hud-container {
-    font-size: 0.98em;
-    padding: 0.32em 2vw;
+    font-size: 0.97em;
+    padding: 0.21em 3vw;
   }
   .game-canvas-container {
     min-width: 0 !important;
-    width: 96vw !important;
+    width: 97vw !important;
     height: auto !important;
     aspect-ratio: 4/3;
-    max-height: 72vw !important;
+    max-height: 74vw !important;
     padding: 0 !important;
+    overflow: auto !important;
+    align-items: center;
+    justify-content: center;
   }
   canvas#game-canvas {
-    max-width: 100vw !important;
+    max-width: 99vw !important;
     max-height: 60vw !important;
     width: 100% !important;
     height: auto !important;
     aspect-ratio: 4/3;
+    object-fit: contain;
   }
-  .btn-panel,
-  .btn-panel-mobile {
+  .btn-panel, .btn-panel-mobile {
     width: 92vw !important;
     max-width: 98vw !important;
     min-width: 0 !important;
-    padding-left: 0;
+    padding-left: 0 !important;
   }
   .footer-note {
-    font-size: 0.7em;
+    font-size: 0.72em;
+    padding-bottom: 6px;
   }
 }
+
 @media (max-width: 550px) {
   .neon-app-root { min-height: 100vh; }
   .hud-container {
@@ -321,15 +356,20 @@ button.neon-btn:focus {
     width: 99vw !important;
     min-width: 0 !important;
     max-width: 99vw !important;
+    overflow-x: auto;
   }
   .game-canvas-container {
     width: 99vw !important;
     max-width: 99vw !important;
     min-width: 0 !important;
-    height: 56vw !important;
-    max-height: 62vw !important;
+    height: auto !important;
+    min-height: 200px !important;
     aspect-ratio: 4/3;
     margin: 12px auto 0 auto !important;
+    overflow-x: auto !important;
+    overflow-y: visible;
+    align-items: center;
+    justify-content: center;
   }
   canvas#game-canvas {
     width: 100vw !important;
@@ -339,15 +379,19 @@ button.neon-btn:focus {
     max-width: 99vw !important;
     max-height: 62vw !important;
     aspect-ratio: 4/3;
+    object-fit: contain;
   }
   .footer-note {
     margin-top: 12px;
     font-size: 0.7em;
+    max-width: 98vw;
+    padding-bottom: 8px;
   }
   .btn-panel, .btn-panel-mobile {
     width: 99vw !important;
     min-width: 0 !important;
     padding-left: 0 !important;
+    justify-content: space-around !important;
   }
   .portal-sacrifice-anim-area { width:97vw!important; min-width:0;}
   .game-overlay {
@@ -441,5 +485,10 @@ button.neon-btn:focus {
 
 ::-webkit-scrollbar { width:7px; background: #242435;}
 ::-webkit-scrollbar-thumb { background: #39ff1422;}
-html, body { scrollbar-width: none; -ms-overflow-style: none; }
+
+html, body { 
+  scrollbar-width: none; 
+  -ms-overflow-style: none; 
+  overscroll-behavior: smooth;
+}
 html::-webkit-scrollbar, body::-webkit-scrollbar { display: none; }
