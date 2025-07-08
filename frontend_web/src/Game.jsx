@@ -2,70 +2,6 @@ import React, { useState, useEffect, useRef } from "react";
 import { saveHighscore } from "./supabaseClient";
 import Leaderboard from "./components/Leaderboard.jsx";
 
-/*
- SPRITE & ASSET INTEGRATION INSTRUCTIONS
- 
- == Where do you put asset files? ==
- - Place all custom sprite/image files in: ./public/assets/
- - Asset file names must follow conventions: e.g. "zombie.png", "bot.png", "player.png", etc.
- - Filenames are case-sensitive. For each entity, the asset must be in assets/<entitykey>.png or .svg
-
- // PATCH: If you're using Create React App, you must place all images in the /public/assets/ folder
- // NOT in src/assets nor in any other folder, since process.env.PUBLIC_URL only serves /public/*
- 
- == How do I add a new asset for an entity? ==
- 1. Put the file in /public/assets/ or /assets/ (if in dev mode).
- 2. Add the key and file to ASSET_LIST below (e.g.: { key: 'skeleton', files: ['skeleton.png', 'skeleton.svg'] })
- 3. Use the entity key for rendering (in ENEMY_TYPES), e.g. 'skeleton'
- 4. The game will auto-load and use the asset if present; otherwise it falls back to SVG neon shape.
- 5. To swap player/bot/zombie image, just update or overwrite the asset file.
-
- == Responsive Sprite Sizing ==
- - The renderers scale all sprites and fallback SVGs for responsive layout at any screen size.
- - Recommended sprite sizes: match entity .w/.h (as in ENEMY_TYPES).
-
-*/
-
-const ASSET_LIST = [
-  { key: "player", files: ["player.png", "player.svg"] },
-  { key: "player_left", files: ["player_left.png", "player_left.svg"] },
-  { key: "zombie", files: ["zombie.png", "zombie.svg"] },
-  { key: "bird", files: ["bird.png", "bird.svg"] },
-  { key: "bot", files: ["bot.png", "bot.svg"] },
-];
-
-const assetImages = {}; // {key: HTMLImageElement | null}
-(function preloadSprites() {
-  ASSET_LIST.forEach((asset) => {
-    let loaded = false;
-    for (const filename of asset.files) {
-      const img = new window.Image();
-      // Try /assets/ (public) first
-      img.src = `${process.env.PUBLIC_URL || ""}/assets/${filename}`;
-      img.onload = () => {
-        if (!loaded) {
-          assetImages[asset.key] = img;
-          loaded = true;
-        }
-      };
-      img.onerror = () => {
-        // PATCH: Fallback in dev - try /assets/ from site root
-        if (
-          !loaded &&
-          asset.files.indexOf(filename) === asset.files.length - 1
-        ) {
-          assetImages[asset.key] = null;
-        }
-      };
-      if (img.complete && img.naturalWidth > 0) {
-        assetImages[asset.key] = img;
-        loaded = true;
-      }
-    }
-    if (!loaded) assetImages[asset.key] = null;
-  });
-})();
-
 // ------------ GAME CONSTANTS AND THEME ------------
 const THEME = {
   primary: "#39ff14",
@@ -80,8 +16,9 @@ const ENEMY_TYPES = {
     key: "zombie",
     w: 44,
     h: 62,
-    speed: 1.36, // SLOWER for balance!
-    color: "#6efd9a",
+    speed: 1.36,
+    color: "#39ff14",
+    accent: "#6efd9a",
     eye: "#fb73fa",
     score: 100,
     radius: 28,
@@ -91,9 +28,10 @@ const ENEMY_TYPES = {
     key: "bird",
     w: 38,
     h: 36,
-    speed: 2.3, // slower
+    speed: 2.3,
     color: "#2ecffd",
-    eye: "#39ff14",
+    accent: "#39ff14",
+    eye: "#fff",
     score: 170,
     radius: 18,
     damage: 18,
@@ -104,6 +42,7 @@ const ENEMY_TYPES = {
     h: 46,
     speed: 1.68,
     color: "#aa2c69",
+    accent: "#fff",
     eye: "#fff",
     score: 130,
     radius: 22,
@@ -123,17 +62,17 @@ const getDims = () => {
 
 const SCANLINE_COLOR = "rgba(58,255,20,0.18)";
 
-// ------------ BULLET EMOJIS / GUN EMOJIS ------------
-const BULLET_EMOJIS = ["🚀", "🔫", "💥"];
+// BULLETS: Use circle/emoji/plasma, randomly picked
+const BULLET_EMOJIS = ["🟢", "💥", "➡️", "•", "⚡"];
 function chooseBulletEmoji() {
   // Add variation and fun
   return BULLET_EMOJIS[Math.floor(rand(0, BULLET_EMOJIS.length))];
 }
 
-const PLAYER_MAX_HEALTH = 120; // was 1 hit KO before, now 120 HP
-const PLAYER_INVULN_FRAMES = 850; // ms of invulnerability after hit
+const PLAYER_MAX_HEALTH = 120;
+const PLAYER_INVULN_FRAMES = 850;
 
-// ------------ React Main Game Component ------------
+// PUBLIC_INTERFACE
 export default function Game() {
   // -- Hooks / State
   const [dims, setDims] = useState(getDims());
@@ -150,11 +89,11 @@ export default function Game() {
   const playerRef = useRef({
     x: 200,
     y: 0,
-    w: 32,
+    w: 36,
     h: 56,
     dir: 1,
     cd: 0,
-    radius: 28,
+    radius: 26,
     health: PLAYER_MAX_HEALTH,
     invulnUntil: 0,
   });
@@ -247,8 +186,8 @@ export default function Game() {
     if (keysRef.current.shoot && p.cd <= 0) {
       let bulletEmoji = chooseBulletEmoji();
       let bulletX =
-        p.x + (p.dir === 1 ? 18 : -18); // Offset: barrel tip
-      let bulletY = dims.height - 120 - 28; // Gun barrel height
+        p.x + (p.dir === 1 ? 22 : -22); // Barrel tip offset
+      let bulletY = dims.height - 120 - 20; // Height from bottom
       bulletsRef.current = [
         ...bulletsRef.current,
         { x: bulletX, y: bulletY, vx: p.dir * 22, r: 13, emoji: bulletEmoji },
@@ -264,7 +203,6 @@ export default function Game() {
 
     // Enemy spawn - spawn rate reduced for balance!
     spawnTimer.current += dt;
-    // New spawn algorithm: slower, then ramps up
     const rateMod = Math.max(1, Math.floor(score / 950) + 1.0);
     const targetDelay = Math.min(
       1650 / rateMod,
@@ -366,7 +304,7 @@ export default function Game() {
     // Draw entities
     for (const e of enemiesRef.current) {
       if (e.dead) continue;
-      drawEnemy(ctx, e, dims);
+      drawEnemy(ctx, e, dims, tickRef.current);
     }
     for (const b of bulletsRef.current) {
       drawBullet(ctx, b, dims);
@@ -393,6 +331,7 @@ export default function Game() {
             : dims.height - base.h - 88,
         vx: sideL ? base.speed : -base.speed,
         dead: false,
+        flapt: Math.random() * Math.PI * 2, // for birds only
       },
     ];
   }
@@ -417,11 +356,11 @@ export default function Game() {
     playerRef.current = {
       x: Math.floor(dims.width * 0.14),
       y: dims.height - 120,
-      w: 32,
+      w: 36,
       h: 56,
       dir: 1,
       cd: 0,
-      radius: 28,
+      radius: 26,
       health: PLAYER_MAX_HEALTH,
       invulnUntil: 0,
     };
@@ -438,8 +377,18 @@ export default function Game() {
     <div className="neon-app-root">
       <div className="hud-container">
         <div className="hud-label">
-          <span className="zombie-icon" /> Score:{" "}
-          <b style={{ marginLeft: 7 }}>{score}</b>
+          <span style={{
+            display: 'inline-block',
+            width: 18, height: 18,
+            verticalAlign: 'middle',
+            marginRight: 7,
+            marginTop: -2,
+            borderRadius: 4,
+            background: "linear-gradient(120deg,#39ff14 60%,#6efd9a 100%)",
+            boxShadow: "0 0 6px #39ff14a0",
+            border: "2px solid #181925"
+          }} />
+          Score: <b style={{ marginLeft: 7 }}>{score}</b>
         </div>
         <div className="hud-center">
           <span
@@ -580,234 +529,361 @@ function drawBG(ctx, w, h) {
   ctx.globalAlpha = 1.0;
 }
 
-/**
- * Render the player using asset from /assets if available, or fallback to SVG neon shape (alien).
- * To add a new player sprite, place a "player.png" (facing right) or "player_left.png" (left) in /assets.
- */
+// PUBLIC_INTERFACE
+// Draws the player as neon alien/humanoid with gun. Gun and arm extend left/right based on facing.
 function drawPlayer(ctx, p, dims) {
-  const facing =
-    p.dir === -1 && assetImages["player_left"] ? "player_left" : "player";
-  const img = assetImages[facing];
   ctx.save();
   ctx.translate(p.x, dims.height - 120);
 
   // Gun barrel coordinates for bullets
-  const barrelX = p.dir === 1 ? 18 : -18, barrelY = -28;
+  const barrelX = p.dir === 1 ? 22 : -22, barrelY = -20;
 
-  // Flashy muzzle effect when shooting
+  // Muzzle flash effect when shooting
   if (p.cd > 130 && p.cd < 170) {
     ctx.save();
     ctx.globalAlpha = 0.82;
     ctx.shadowColor = "#2ecffd";
-    ctx.shadowBlur = 30;
+    ctx.shadowBlur = 28;
     ctx.strokeStyle = "#39ff14";
     ctx.lineWidth = 7.3;
     ctx.beginPath();
     ctx.moveTo(barrelX, barrelY);
-    ctx.lineTo(p.dir === 1 ? 56 : -56, barrelY + 7);
+    ctx.lineTo(p.dir === 1 ? barrelX + 15 : barrelX - 15, barrelY + 5);
     ctx.stroke();
-    ctx.globalAlpha = 0.23;
+    ctx.globalAlpha = 0.37;
     ctx.beginPath();
-    ctx.arc(barrelX, barrelY, 10, 0, Math.PI * 2);
+    ctx.arc(barrelX, barrelY, 13, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
   }
 
-  // Sprited
-  if (img && img.complete && img.naturalWidth > 0) {
-    const w = 34,
-      h = 56;
-    ctx.drawImage(img, -w / 2, -h + 15, w, h);
+  // Draw cartoon alien/humanoid body (neon)
+  ctx.save();
+  ctx.shadowColor = "#39ff14";
+  ctx.shadowBlur = 15;
+  ctx.fillStyle = "#552bfe";
+  ctx.beginPath(); // torso
+  ctx.ellipse(0, -35, 15, 22, 0, 0, 2 * Math.PI);
+  ctx.fill();
+
+  // Head (oval)
+  ctx.shadowColor = "#f7ffc3";
+  ctx.shadowBlur = 16;
+  ctx.beginPath();
+  ctx.ellipse(0, -60, 15, 19, 0, 0, 2 * Math.PI);
+  ctx.fillStyle = "#39ff14";
+  ctx.fill();
+
+  // Head accent (eye)
+  ctx.shadowBlur = 3;
+  ctx.fillStyle = "#aa2c69";
+  ctx.beginPath();
+  ctx.ellipse(0, -66, 4.5, 5.5, 0, 0, 2 * Math.PI);
+  ctx.fill();
+
+  // Arms (one holding gun, other down)
+  ctx.save();
+  ctx.lineCap = "round";
+  ctx.strokeStyle = "#fff";
+  ctx.lineWidth = 7;
+  ctx.shadowColor = "#39ff14";
+  ctx.shadowBlur = 7;
+  ctx.beginPath();
+  ctx.moveTo(-8, -44);
+  ctx.lineTo(p.dir === 1 ? 36 : -36, barrelY);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(7, -34); // other arm less visible
+  ctx.lineTo(17, -20);
+  ctx.stroke();
+  ctx.restore();
+
+  // Draw gun as a composed shape (rectangle + barrel) + emoji
+  ctx.save();
+  ctx.shadowColor = "#2ecffd";
+  ctx.shadowBlur = 8;
+  ctx.fillStyle = "#191925";
+  ctx.fillRect(barrelX - (p.dir === 1 ? 3 : 9), barrelY - 4, 18, 8);
+  ctx.fillStyle = "#2ecffd";
+  ctx.fillRect(barrelX + (p.dir === 1 ? 14 : -2), barrelY - 1.5, 10, 3);
+  ctx.restore();
+
+  // Gun emoji for extra fun
+  ctx.save();
+  ctx.font = "20px Segoe UI Emoji, Apple Color Emoji, sans-serif";
+  ctx.globalAlpha = 0.95;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("🔫", barrelX + (p.dir === 1 ? 7: -7), barrelY);
+  ctx.restore();
+
+  ctx.restore();
+
+  // Legs
+  ctx.save();
+  ctx.shadowColor = "#aa2c69";
+  ctx.shadowBlur = 12;
+  ctx.strokeStyle = "#39ff14";
+  ctx.lineWidth = 8;
+  ctx.beginPath();
+  ctx.moveTo(-6, -14); ctx.lineTo(-8, 12); // left
+  ctx.moveTo(6, -14); ctx.lineTo(9, 13);   // right
+  ctx.stroke();
+  ctx.restore();
+
+  // Invulnerability flash overlay
+  if (p.invulnUntil && Date.now() < p.invulnUntil) {
+    ctx.save();
+    ctx.globalAlpha = 0.38 + 0.22 * Math.sin(Date.now() / 110);
+    ctx.fillStyle = "#fff";
+    ctx.beginPath();
+    ctx.arc(0, -25, 36, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  ctx.restore();
+}
+
+// PUBLIC_INTERFACE
+// Render a bullet as an emoji or neon glowing circle
+function drawBullet(ctx, b, dims) {
+  ctx.save();
+  // With 85% probability, use emoji, otherwise plasma-style glowing dot
+  if (b.emoji && Math.random() > 0.15) {
+    ctx.font = "bold 31px Segoe UI Emoji, Apple Color Emoji, Noto Color Emoji, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.shadowColor = "#2ecffd";
+    ctx.shadowBlur = 15;
+    ctx.globalAlpha = 1;
+    ctx.fillText(b.emoji, b.x, b.y + 1);
   } else {
-    // Neon fallback alien shape (SVG-like vector glow)
-    ctx.shadowColor = "#9633f9";
-    ctx.shadowBlur = 16;
-    ctx.fillStyle = "#9633f9";
-    ctx.fillRect(-17, -43, 34, 46); // torso
+    ctx.globalAlpha = 1;
     ctx.shadowColor = "#39ff14";
     ctx.shadowBlur = 19;
     ctx.beginPath();
-    ctx.arc(0, -60, 18, 0, Math.PI * 2); // head
-    ctx.fillStyle = "#39ff14";
+    ctx.arc(b.x, b.y, 11, 0, 2 * Math.PI);
+    ctx.fillStyle = "#6efd9a";
     ctx.fill();
-    ctx.shadowBlur = 0;
-    ctx.beginPath();
-    ctx.arc(0, -64, 5, 0, Math.PI * 2);
-    ctx.fillStyle = "#aa2c69";
-    ctx.fill();
-    // Draw arms
-    ctx.save();
-    ctx.strokeStyle = "#fff";
-    ctx.lineWidth = 5.3;
-    ctx.shadowColor = "#39ff14";
+    ctx.shadowColor = "#fff";
     ctx.shadowBlur = 7;
     ctx.beginPath();
-    ctx.moveTo(0, -35);
-    ctx.lineTo(p.dir === 1 ? 16 : -16, -27);
-    ctx.stroke();
-    ctx.restore();
-    // Draw a gun barrel
-    ctx.save();
-    ctx.fillStyle = "#2ecffd";
-    ctx.shadowColor = "#2ecffd";
-    ctx.shadowBlur = 10;
-    ctx.fillRect(p.dir === 1 ? 14 : -26, -32, 12, 5);
-    ctx.restore();
-  }
-
-  // Draw brief invulnerability flash
-  if (p.invulnUntil && Date.now() < p.invulnUntil) {
-    ctx.save();
-    ctx.globalAlpha = 0.49 + 0.13 * Math.sin(Date.now() / 110);
-    ctx.fillStyle = "#fff";
-    ctx.beginPath();
-    ctx.arc(0, -20, 34, 0, Math.PI * 2);
+    ctx.arc(b.x, b.y, 5, 0, 2 * Math.PI);
+    ctx.fillStyle = "#39ff14";
     ctx.fill();
-    ctx.restore();
   }
-
   ctx.restore();
 }
 
-/**
- * Render a bullet as an emoji "fired" from the gun, or fallback to blue-plasma neon.
- * Add more fun emojis to BULLET_EMOJIS list to customize.
- */
-function drawBullet(ctx, b, dims) {
-  ctx.save();
-  ctx.font = "bold 30px Segoe UI Emoji, Apple Color Emoji, Noto Color Emoji, sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  const emoji = b.emoji || "🚀";
-  ctx.shadowColor = "#2ecffd";
-  ctx.shadowBlur = 16;
-  ctx.globalAlpha = 1;
-  ctx.fillText(emoji, b.x, b.y + 1);
-  ctx.restore();
-}
-
-/**
- * Draw an enemy - use /public/assets/<entity>.png if present (must be in /public/assets),
- * otherwise draw neon SVG fallback shape. 
- * Cause of invisible sprites: asset image not in correct folder, or asset load failure.
- * @param ctx HTMLCanvasContext
- * @param e entity object
- * @param dims screen size
- */
-function drawEnemy(ctx, e, dims) {
-  const img = assetImages[e.key];
+// PUBLIC_INTERFACE
+// Draws an enemy using only canvas primitives and/or emoji
+function drawEnemy(ctx, e, dims, tick) {
   ctx.save();
   ctx.globalAlpha = 0.98;
 
-  // Try to use asset image if loaded (e.g. zombie.png)
-  if (img && img.complete && img.naturalWidth > 0) {
-    let w = e.w || (e.radius ? e.radius * 2 : 38),
-      h = e.h || w;
-    let cx = e.x - w / 2,
-      cy = e.y - h / 2;
-    ctx.drawImage(img, cx, cy, w, h);
-  } else {
-    // SVG neon fallback for each enemy type
-    ctx.shadowColor = e.color;
-    ctx.shadowBlur = 14;
-
-    if (e.key === "bird") {
-      // Bird: neon glowing circle + wings
-      ctx.beginPath();
-      ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
-      ctx.fillStyle = e.color;
-      ctx.fill();
-      ctx.globalAlpha = 1.0;
-      ctx.shadowBlur = 0;
-      ctx.beginPath();
-      ctx.arc(e.x + 5, e.y - 2, 3.5, 0, Math.PI * 2);
-      ctx.fillStyle = "#fff";
-      ctx.fill();
-
-      // Flapping wings
-      let wingG = ctx.createRadialGradient(e.x, e.y, 4, e.x, e.y, e.radius);
-      wingG.addColorStop(0, "#fff");
-      wingG.addColorStop(1, "#2ecffd44");
+  if (e.key === "bird") {
+    // Neon flapping bird - composed ellipse/triangle/wing
+    const t = (Date.now()/150 + e.flapt) % (2*Math.PI);
+    const yBob = Math.sin(t) * 4.5;
+    // Body (oval)
+    ctx.save();
+    ctx.shadowColor = "#39ff14";
+    ctx.shadowBlur = 13;
+    ctx.beginPath();
+    ctx.ellipse(e.x, e.y + yBob, e.radius, e.radius*0.85, 0, 0, 2*Math.PI);
+    ctx.fillStyle = "#2ecffd";
+    ctx.fill();
+    // Wing (flap)
+    ctx.globalAlpha = 0.25 + 0.30 * Math.abs(Math.cos(t));
+    ctx.save();
+    ctx.translate(e.x - 3, e.y + yBob - 3);
+    ctx.rotate(Math.PI / 2.2 * Math.sin(t));
+    ctx.beginPath();
+    ctx.ellipse(0, 0, e.radius*1.25, 7.5, 0, 0, 2*Math.PI);
+    ctx.fillStyle = "#39ff1499";
+    ctx.fill();
+    ctx.restore();
+    ctx.globalAlpha = 0.98;
+    // Eye
+    ctx.beginPath();
+    ctx.arc(e.x + 7, e.y + yBob - 4, 2.8, 0, 2*Math.PI);
+    ctx.fillStyle = "#fff";
+    ctx.shadowColor = "#fff";
+    ctx.shadowBlur = 2;
+    ctx.fill();
+    // Beak (triangle)
+    ctx.beginPath();
+    ctx.moveTo(e.x + e.radius - 1, e.y + yBob);
+    ctx.lineTo(e.x + e.radius + 9, e.y + yBob-4);
+    ctx.lineTo(e.x + e.radius + 9, e.y + yBob+4);
+    ctx.closePath();
+    ctx.fillStyle = "#ffd900";
+    ctx.fill();
+    ctx.restore();
+    // Occasionally show a "🐦" emoji bounce for extra personality
+    if ((tick || 0)%111 < 12) {
       ctx.save();
-      ctx.globalAlpha = 0.16 + 0.12 * Math.abs(Math.sin(Date.now() / 110));
-      ctx.fillStyle = wingG;
-      ctx.beginPath();
-      ctx.ellipse(
-        e.x,
-        e.y,
-        e.radius * (1.3 + 0.26 * Math.abs(Math.sin(Date.now() / 140))),
-        e.radius * 0.7,
-        Math.PI * 0.14 * Math.sin(Date.now() / 200),
-        0,
-        2 * Math.PI
-      );
-      ctx.fill();
+      ctx.font = `${Math.round(e.radius*2.1)}px Segoe UI Emoji, Apple Color Emoji`;
+      ctx.globalAlpha = 0.34;
+      ctx.fillText("🐦", e.x + 1, e.y + yBob - e.radius - 8);
       ctx.restore();
-      ctx.globalAlpha = 0.98;
-    } else if (e.key === "bot") {
-      ctx.fillStyle = e.color;
-      ctx.fillRect(e.x - e.w / 2, e.y - e.h / 2, e.w, e.h);
-
-      // Eyes
-      ctx.globalAlpha = 1.0;
-      ctx.shadowBlur = 0;
-      ctx.beginPath();
-      ctx.arc(e.x + e.w / 5, e.y - e.h / 4, 7, 0, Math.PI * 2);
-      ctx.fillStyle = "#fb73fa";
-      ctx.shadowColor = "#fff";
-      ctx.shadowBlur = 8;
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(e.x - e.w / 5, e.y - e.h / 4, 7, 0, Math.PI * 2);
-      ctx.fillStyle = "#fff";
-      ctx.shadowColor = "#39ff14";
-      ctx.shadowBlur = 7;
-      ctx.fill();
-
-      // Edge: neon stroke
-      ctx.globalAlpha = 0.22;
-      ctx.strokeStyle = "#fff";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(e.x - e.w / 2, e.y - e.h / 2, e.w, e.h);
-      ctx.globalAlpha = 0.98;
-    } else {
-      // Zombie: neon green glowing body + head
-      ctx.fillRect(e.x - e.w / 2, e.y - e.h / 2 + 13, e.w, e.h - 14);
-      ctx.beginPath();
-      ctx.arc(e.x, e.y - e.h / 2 + 22, 17, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Eyes
-      ctx.globalAlpha = 1.0;
-      ctx.shadowBlur = 0;
-      ctx.beginPath();
-      ctx.arc(e.x - 6, e.y - e.h / 2 + 24, 3.7, 0, Math.PI * 2);
-      ctx.fillStyle = "#fb73fa";
-      ctx.shadowColor = "#fff";
-      ctx.shadowBlur = 6;
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(e.x + 6, e.y - e.h / 2 + 25, 2.6, 0, Math.PI * 2);
-      ctx.fillStyle = "#fff";
-      ctx.shadowColor = "#39ff14";
-      ctx.shadowBlur = 5;
-      ctx.fill();
-
-      // Forehead glow
-      ctx.globalAlpha = 0.21;
-      ctx.beginPath();
-      ctx.arc(e.x - 4, e.y - e.h / 2 + 18, 7, 0, Math.PI * 2);
-      ctx.fillStyle = "#fff";
-      ctx.fill();
-      ctx.globalAlpha = 0.98;
     }
+  } else if (e.key === "bot") {
+    // Bot: Rectangle body + robot face accents + glowing eyes (or emoji every few seconds)
+    ctx.save();
+    ctx.shadowColor = e.color;
+    ctx.shadowBlur = 13;
+    let w = e.w,
+      h = e.h;
+    ctx.fillStyle = e.color;
+    ctx.fillRect(e.x - w / 2, e.y - h / 2, w, h);
+    // Robot "antenna"
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(e.x, e.y-h/2);
+    ctx.lineTo(e.x, e.y-h/2-13);
+    ctx.stroke();
+    ctx.restore();
+
+    // Eyes
+    ctx.save();
+    ctx.shadowColor = "#fff";
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.arc(e.x + w / 6, e.y - h / 6, 7, 0, Math.PI * 2);
+    ctx.fillStyle = "#fff";
+    ctx.fill();
+    ctx.shadowBlur = 17;
+    ctx.fillStyle = "#39ff14";
+    ctx.beginPath();
+    ctx.arc(e.x - w / 6, e.y - h / 7, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Neon outline
+    ctx.save();
+    ctx.globalAlpha = 0.22;
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 2.5;
+    ctx.strokeRect(e.x - w / 2, e.y - h / 2, w, h);
+    ctx.restore();
+
+    // Small mouth
+    ctx.save();
+    ctx.beginPath();
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 2;
+    ctx.moveTo(e.x - 7, e.y + h / 7);
+    ctx.lineTo(e.x + 7, e.y + h / 7);
+    ctx.globalAlpha = 0.5;
+    ctx.shadowColor = "#39ff14";
+    ctx.shadowBlur = 6;
+    ctx.stroke();
+    ctx.restore();
+
+    // Rare personality boost: Draw 🤖 emoji
+    if (tick && (tick%143 === 0)) {
+      ctx.save();
+      ctx.font = `${Math.round(w*1.13)}px Segoe UI Emoji, Apple Color Emoji`;
+      ctx.globalAlpha = 0.19;
+      ctx.fillText("🤖", e.x, e.y - h/2 + 18);
+      ctx.restore();
+    }
+  } else {
+    // Zombie: body is vertical rectangle, ovoid neon head, stubby arms/legs, glowing eyes
+    ctx.save();
+    ctx.shadowColor = "#39ff14";
+    ctx.shadowBlur = 14;
+    let w = e.w, h = e.h;
+    // Torso
+    ctx.fillStyle = "#6efd9a";
+    ctx.fillRect(e.x - w / 2 + 5, e.y - h / 2 + 20, w-10, h-28);
+    // Head (oval)
+    ctx.save();
+    ctx.shadowBlur = 16;
+    ctx.fillStyle = "#39ff14";
+    ctx.beginPath();
+    ctx.ellipse(e.x, e.y - h/2 + 26, 17, 18, Math.PI * 0.06, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.restore();
+    // Eyes (glow pink/white)
+    ctx.save();
+    ctx.shadowBlur = 9;
+    ctx.fillStyle = "#fb73fa";
+    ctx.beginPath();
+    ctx.arc(e.x - 7, e.y - h/2 + 24, 3.9, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.shadowColor = "#fff";
+    ctx.fillStyle = "#fff";
+    ctx.arc(e.x + 6, e.y - h/2 + 26, 2.9, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.restore();
+    // Mouth
+    ctx.save();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = "#aa2c69";
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(e.x, e.y- h/2+34, 6, Math.PI*0.19, Math.PI*0.77);
+    ctx.stroke();
+    ctx.restore();
+
+    // Arms
+    ctx.save();
+    ctx.shadowColor = "#6efd9a";
+    ctx.shadowBlur = 8;
+    ctx.strokeStyle = "#6efd9a";
+    ctx.lineWidth = 5.4;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(e.x - w/2+6, e.y - h/2 + 40);
+    ctx.lineTo(e.x - w/2-13, e.y - h/2 + 58 + 4*Math.sin(Date.now()/160));
+    ctx.moveTo(e.x + w/2-6, e.y - h/2 + 44);
+    ctx.lineTo(e.x + w/2+13, e.y - h/2 + 58 + 4*Math.cos(Date.now()/160));
+    ctx.stroke();
+    ctx.restore();
+
+    // Legs
+    ctx.save();
+    ctx.shadowColor = "#aa2c69";
+    ctx.shadowBlur = 8;
+    ctx.strokeStyle = "#39ff14";
+    ctx.lineWidth = 6.7;
+    ctx.beginPath();
+    ctx.moveTo(e.x - 7, e.y + h/2 - 21);
+    ctx.lineTo(e.x - 13, e.y + h/2);
+    ctx.moveTo(e.x + 7, e.y + h/2 - 21);
+    ctx.lineTo(e.x + 15, e.y + h/2);
+    ctx.stroke();
+    ctx.restore();
+
+    // Forehead accent
+    ctx.save();
+    ctx.globalAlpha = 0.12;
+    ctx.beginPath();
+    ctx.arc(e.x - 2, e.y - h/2 + 18, 8, 0, Math.PI * 2);
+    ctx.fillStyle = "#fff";
+    ctx.fill();
+    ctx.restore();
+
+    // Add rare sparkling 🧟 emoji
+    if (tick && tick%121 === 0) {
+      ctx.save();
+      ctx.font = `${Math.round(w*1.25)}px Segoe UI Emoji, Apple Color Emoji`;
+      ctx.globalAlpha = 0.18;
+      ctx.fillText("🧟", e.x, e.y - h/2 + 22);
+      ctx.restore();
+    }
+    ctx.restore();
   }
   ctx.restore();
 }
 
-/**
- * Health HUD: draws player health as neon bar (bottom left, screen responsive)
- */
+// PUBLIC_INTERFACE
+// Health HUD: neon bar with label (bottom left, screen responsive)
 function drawHealthMeter(ctx, p, width, height) {
   const HP = p.health !== undefined ? p.health : PLAYER_MAX_HEALTH;
   if (!HP || HP < 0) return;
