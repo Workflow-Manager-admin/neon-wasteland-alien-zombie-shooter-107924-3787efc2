@@ -444,34 +444,66 @@ function drawBG(ctx, w, h) {
   ctx.globalAlpha = 1.0;
 }
 
-// Player draw with asset fallback logic
+/**
+ * Draws the player using a sprite image if available, or SVG/neon vector as fallback.
+ * To swap in your own asset: Place your file in /public/assets/ as "player.png" (for right-facing) and/or "player_left.png" (for left).
+ * The sprite is centered at (p.x, p.y), scaled for canvas responsiveness.
+ */
 function drawPlayer(ctx, p, dims) {
-  // If assets loaded, use drawImage, else fallback
+  // Pick correct facing
   const facing = p.dir === -1 && assetImages['player_left'] ? 'player_left' : 'player';
   const img = assetImages[facing];
+  // Gun barrel: anchored at player's hand
+  const handX = p.x + (p.dir === 1 ? 13 : -13);
+  const handY = dims.height - 120 - 30;
   ctx.save();
   ctx.translate(p.x, dims.height - 120);
 
+  // If shooting, draw a laser glow/bullet from gun
+  if (p.cd > 140 && p.cd < 170) {
+    // Add a brief visible laser glow when firing!
+    ctx.save();
+    ctx.globalAlpha = 0.68;
+    ctx.shadowColor = "#39ffef";
+    ctx.shadowBlur = 24;
+    ctx.strokeStyle = "#2ecffd";
+    ctx.lineWidth = 7 + Math.sin(Date.now() / 80) * 1.2;
+    ctx.beginPath();
+    ctx.moveTo(p.dir === 1 ? 13 : -13, -30);
+    ctx.lineTo(p.dir === 1 ? 41 : -41, -28);
+    ctx.stroke();
+    // Glow core
+    ctx.globalAlpha = 0.53;
+    ctx.shadowBlur = 18;
+    ctx.strokeStyle = "#a7f4ff";
+    ctx.lineWidth = 3.3;
+    ctx.beginPath();
+    ctx.moveTo(p.dir === 1 ? 13 : -13, -30);
+    ctx.lineTo(p.dir === 1 ? 45 : -45, -28);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   if (img && img.complete && img.naturalWidth > 0) {
-    // Draw image centered at player's position and scaled
-    const w = 34, h = 56; // preferred visual size
+    // Draw sprite image (user asset)
+    const w = 34, h = 56; // preferred visual size for scaling
     ctx.drawImage(
       img,
       -w / 2,
-      -h + 15,    // y offset so feet sit on ground
+      -h + 15, // y offset so feet sit on ground
       w,
       h
     );
   } else {
-    // Neon fallback: synthwave cyborg
+    // Fallback: Neon SVG-style alien with simple "gun"
     ctx.shadowColor = "#9633f9";
     ctx.shadowBlur = 16;
     ctx.fillStyle = "#9633f9";
-    ctx.fillRect(-17, -43, 34, 46);
+    ctx.fillRect(-17, -43, 34, 46); // torso
     ctx.shadowColor = "#39ff14";
     ctx.shadowBlur = 19;
     ctx.beginPath();
-    ctx.arc(0, -60, 18, 0, Math.PI * 2);
+    ctx.arc(0, -60, 18, 0, Math.PI * 2); // head
     ctx.fillStyle = "#39ff14";
     ctx.fill();
     ctx.shadowBlur = 0;
@@ -479,95 +511,162 @@ function drawPlayer(ctx, p, dims) {
     ctx.arc(0, -64, 5, 0, Math.PI * 2);
     ctx.fillStyle = "#aa2c69";
     ctx.fill();
+    // Draw arms holding gun, facing respective directions
+    ctx.save();
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 5.3;
+    ctx.shadowColor = "#39ff14";
+    ctx.shadowBlur = 7;
+    ctx.beginPath();
+    ctx.moveTo(0, -35);
+    ctx.lineTo(p.dir === 1 ? 16 : -16, -27);
+    ctx.stroke();
+    ctx.restore();
+    // Draw a gun barrel
+    ctx.save();
+    ctx.fillStyle = "#2ecffd";
+    ctx.shadowColor = "#2ecffd";
+    ctx.shadowBlur = 10;
+    ctx.fillRect(p.dir === 1 ? 14 : -26, -32, 12, 5);
+    ctx.restore();
   }
   ctx.restore();
 }
 
-// Bullet: Asset or neon-blue plasma fallback
+/**
+ * Draws player-fired bullet as either image or a neon blue plasma, with strong glow.
+ * To swap with user asset: place "bullet.png" (transparent). Size will match in-game radius.
+ */
 function drawBullet(ctx, b) {
   const img = assetImages['bullet'];
   ctx.save();
   if (img && img.complete && img.naturalWidth > 0) {
-    // Centered bullet sprite, scaled to bullet radius
+    // Draw bullet sprite (centered, scaled to bullet radius)
     const w = (b.r || 7) * 2, h = (b.r || 7) * 2;
     ctx.drawImage(img, b.x - w / 2, b.y - h / 2, w, h);
   } else {
-    // Neon bullet/glow fallback
+    // Neon bullet (radial blue plasma)
     ctx.globalAlpha = 1;
-    ctx.shadowColor = "#2ecffd";
-    ctx.shadowBlur = 14;
+    ctx.shadowColor = "#39ffef";
+    ctx.shadowBlur = 18;
+    // Glowing core
     ctx.fillStyle = "#2ecffd";
     ctx.beginPath();
     ctx.arc(b.x, b.y, b.r || 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 0.46;
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, (b.r || 7) * 2.2, 0, Math.PI * 2);
     ctx.fill();
   }
   ctx.restore();
 }
 
-// Per-enemy draw: asset image, SVG, or neon fallback
+/**
+ * Draws enemies using sprite if found OR SVG/neon fallback.
+ * To provide custom assets: name zombie/bird/bot sprites by key and place in /public/assets/ (see asset preloader above).
+ */
 function drawEnemy(ctx, e) {
   const img = assetImages[e.key];
   ctx.save();
   ctx.globalAlpha = 0.98;
 
   if (img && img.complete && img.naturalWidth > 0) {
-    // Responsive width, height mapped from entity .w/.h/.radius.
+    // Use user-provided sprite: scale using game entity w/h
     let w = e.w || (e.radius ? e.radius * 2 : 38);
     let h = e.h || w;
     let cx = e.x - w / 2, cy = e.y - h / 2;
     if (e.key === "bird") {
-      // Birds drawn as centered circles by default; align accordingly
       cx = e.x - w / 2;
       cy = e.y - h / 2;
     }
     ctx.drawImage(img, cx, cy, w, h);
   } else {
-    // Fallback stylish neon vector
+    // SVG style fallback with gradients, glows
     ctx.shadowColor = e.color;
     ctx.shadowBlur = 14;
 
     if (e.key === "bird") {
+      // Bird: neon glowing circle with barely-visible flappy wings
       ctx.beginPath();
       ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
       ctx.fillStyle = e.color;
       ctx.fill();
+
+      // Eyes
       ctx.globalAlpha = 1.0; ctx.shadowBlur = 0;
       ctx.beginPath();
       ctx.arc(e.x + 5, e.y - 2, 3.5, 0, Math.PI * 2);
       ctx.fillStyle = "#fff";
       ctx.fill();
-      // Optional gradient wing
+
+      // Flapping wings: neon transparent ellipse, slightly animated
       let wingG = ctx.createRadialGradient(e.x, e.y, 4, e.x, e.y, e.radius);
       wingG.addColorStop(0, "#fff");
       wingG.addColorStop(1, "#2ecffd44");
-      ctx.globalAlpha = 0.22;
+      ctx.save();
+      ctx.globalAlpha = 0.16 + 0.12 * Math.abs(Math.sin(Date.now() / 110));
       ctx.fillStyle = wingG;
       ctx.beginPath();
-      ctx.ellipse(e.x, e.y, e.radius * 1.3, e.radius * 0.7, Math.PI * 0.15, 0, 2 * Math.PI);
+      ctx.ellipse(
+        e.x, e.y,
+        e.radius * (1.3 + 0.26 * Math.abs(Math.sin(Date.now() / 140))),
+        e.radius * 0.7, 
+        Math.PI * 0.14 * Math.sin(Date.now() / 200), 0, 2 * Math.PI
+      );
       ctx.fill();
+      ctx.restore();
       ctx.globalAlpha = 0.98;
     } else if (e.key === "bot") {
+      // Bot: neon rectangle body, glowing neon eye/camera
       ctx.fillStyle = e.color;
       ctx.fillRect(e.x - e.w / 2, e.y - e.h / 2, e.w, e.h);
       ctx.globalAlpha = 1.0; ctx.shadowBlur = 0;
+      // Dual neon "eyes"
       ctx.beginPath();
-      ctx.arc(e.x + e.w / 4, e.y - e.h / 4, 7, 0, Math.PI * 2);
+      ctx.arc(e.x + e.w / 5, e.y - e.h / 4, 7, 0, Math.PI * 2);
       ctx.fillStyle = "#fb73fa";
+      ctx.shadowColor = "#fff";
+      ctx.shadowBlur = 8;
       ctx.fill();
-      // Neon edge overlay
-      ctx.globalAlpha = 0.2;
+      ctx.beginPath();
+      ctx.arc(e.x - e.w / 5, e.y - e.h / 4, 7, 0, Math.PI * 2);
+      ctx.fillStyle = "#fff";
+      ctx.shadowColor = "#39ff14";
+      ctx.shadowBlur = 7;
+      ctx.fill();
+
+      // Edge: neon stroke
+      ctx.globalAlpha = 0.22;
       ctx.strokeStyle = "#fff";
       ctx.lineWidth = 2;
       ctx.strokeRect(e.x - e.w / 2, e.y - e.h / 2, e.w, e.h);
       ctx.globalAlpha = 0.98;
     } else {
-      // zombie: neon rect body, glowy circle head (with shadow for synth style)
+      // Zombie: glowy green body, big glowing head, synthwave accent
       ctx.fillRect(e.x - e.w / 2, e.y - e.h / 2 + 13, e.w, e.h - 14);
+
       ctx.beginPath();
       ctx.arc(e.x, e.y - e.h / 2 + 22, 17, 0, Math.PI * 2);
       ctx.fill();
-      // Shine overlay
-      ctx.globalAlpha = 0.22;
+
+      // Eyes
+      ctx.globalAlpha = 1.0; ctx.shadowBlur = 0;
+      ctx.beginPath();
+      ctx.arc(e.x - 6, e.y - e.h / 2 + 24, 3.7, 0, Math.PI * 2);
+      ctx.fillStyle = "#fb73fa";
+      ctx.shadowColor = "#fff";
+      ctx.shadowBlur = 6;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(e.x + 6, e.y - e.h / 2 + 25, 2.6, 0, Math.PI * 2);
+      ctx.fillStyle = "#fff";
+      ctx.shadowColor = "#39ff14";
+      ctx.shadowBlur = 5;
+      ctx.fill();
+
+      // Shine overlay glow
+      ctx.globalAlpha = 0.21;
       ctx.beginPath();
       ctx.arc(e.x - 4, e.y - e.h / 2 + 18, 7, 0, Math.PI * 2);
       ctx.fillStyle = "#fff";
