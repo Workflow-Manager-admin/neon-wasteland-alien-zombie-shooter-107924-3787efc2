@@ -599,104 +599,105 @@ function drawBG(ctx, w, h) {
 
 /**
  * PUBLIC_INTERFACE
- * Draws the player for debug:
- *   IGNORE all transforms/fancy drawing!
- *   Only draw large bright rectangle and emoji for canvas output verification.
- *   If not visible, there is a more fundamental problem with canvas.
+ * Draws the player at position p.x, p.y as a massive, filled, bright rectangle and a large emoji.
+ * This code forcibly disables all transforms, alpha, effects, and visual complexity for diagnostic purposes!
+ * If this is not visible, there is a critical canvas or context bug.
+ * DIAGNOSTIC OVERRIDE: This temporarily disables all "real" player shape logic.
+ * Rectangle xy and emoji center position are anchored to p.x, p.y only.
  */
 function drawPlayer(ctx, p, dims) {
-  // DIAGNOSTIC: Log all input on every call
+  // DIAGNOSTIC: Log all inputs
   console.log(
-    "[DIAGNOSTIC][drawPlayer] CALLED",
+    "[DIAGNOSTIC][OVERRIDE][drawPlayer] Forced visible: ", 
     {
-      x: p.x, y: p.y, w: p.w, h: p.h, dir: p.dir, health: p.health,
-      canvasW: dims.width, canvasH: dims.height,
-      now: Date.now()
+      x: p.x, y: p.y, w: p.w, h: p.h, health: p.health,
+      dims, now: Date.now()
     }
   );
   if (!ctx) {
-    console.error("[drawPlayer] DIAGNOSTIC -- CTX IS NULL! PLAYER NOT DRAWN!", {player: p, dims});
-    alert("ALERT: drawPlayer called, but context is NULL! Check renderer/canvas declaration!");
+    console.error("[drawPlayer][DIAG] ctx is NULL!", {p, dims});
+    alert("[drawPlayer][DIAG] ctx is NULL!");
     return;
   }
-  // Large solid rectangle and emoji at intended player position (ignore transforms)
+  // Completely ignore transforms, alpha, and style logic!
+  // Draw a highly visible, huge magenta rectangle and black emoji at p.x, p.y.
   ctx.save();
-  ctx.globalAlpha = 1;
+  ctx.setTransform(1,0,0,1,0,0); // Remove all transforms.
+  ctx.globalAlpha = 1.0;
+  // Rectangle centered at player x/y (may overlap out of bounds for low values)
+  let rectX = Math.round(p.x - 55), rectY = Math.round(p.y - 55);
   ctx.fillStyle = "#FF00FF";
-  // Use a rectangle near the bottom of the canvas
-  let diagRectX = Math.round(p.x - 50), diagRectY = Math.round(dims.height - 170);
-  ctx.fillRect(diagRectX, diagRectY, 110, 110);
+  ctx.fillRect(rectX, rectY, 110, 110);
   ctx.strokeStyle = "#FFFF00";
   ctx.lineWidth = 8;
-  ctx.strokeRect(diagRectX, diagRectY, 110, 110);
+  ctx.strokeRect(rectX, rectY, 110, 110);
   ctx.font = "92px Segoe UI Emoji, Apple Color Emoji, sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillStyle = "#222";
-  ctx.fillText("👽", diagRectX + 55, diagRectY + 55);
+  ctx.fillStyle = "#111";
+  ctx.fillText("🧍", p.x, p.y);
   ctx.restore();
-  // Warn if out of canvas bounds
+
+  // Additional log if rectangle is out of bounds
   if (
-    diagRectX + 110 > dims.width ||
-    diagRectY + 110 > dims.height ||
-    diagRectX < 0 ||
-    diagRectY < 0
+    rectX + 110 > dims.width ||
+    rectY + 110 > dims.height ||
+    rectX < 0 ||
+    rectY < 0
   ) {
-    console.error("[DIAGNOSTIC][drawPlayer] Rectangle/emoji outside canvas bounds!", {
-      diagRectX, diagRectY, dims
-    });
+    console.warn("[DIAGNOSTIC][drawPlayer] Rectangle/emoji out of canvas bounds!", {rectX, rectY, dims});
   }
-  // The real drawing logic is commented for quick re-enable.
-  /*
-   ... original transform/alien body draw code ...
-  */
+
+  // Original drawing logic fully suppressed for diagnostic override.
+  // -- END OVERRIDE --
 }
 
 /**
  * PUBLIC_INTERFACE
- * Draws enemy for debug:
- *   Fully override all body segment logic.
- *   Draw a single large, obvious rectangle and emoji at e.x/e.y (ignoring transforms).
+ * Draws an enemy at e.x,e.y as a huge high-contrast rectangle plus a visually distinct emoji.
+ * Ignores all transforms/animations and disables all other logic for maximal visibility.
+ * Rectangle and emoji are always drawn at e.x/e.y, using only fillRect and fillText.
  */
 function drawEnemy(ctx, e, dims, tick) {
-  // DIAGNOSTIC: Log all input on every call
+  // DIAGNOSTIC: Log all entity and render params
   console.log(
-    "[DIAGNOSTIC][drawEnemy] CALLED",
-    { key: e.key, x: e.x, y: e.y, w: e.w, h: e.h, r: e.radius, dead: e.dead, tick, dims, now: Date.now() }
+    "[DIAGNOSTIC][OVERRIDE][drawEnemy] Forced visible: ",
+    { key: e.key, x: e.x, y: e.y, w: e.w, h: e.h, tick, dims, now: Date.now() }
   );
   if (!ctx) {
-    console.error("[drawEnemy] DIAGNOSTIC -- CTX IS NULL! ENEMY NOT DRAWN!", {e, dims});
-    alert("ALERT: drawEnemy called, but canvas context is NULL! Check renderer/canvas declaration!");
+    console.error("[drawEnemy][DIAG] ctx is NULL!", {e, dims});
+    alert("[drawEnemy][DIAG] ctx is NULL!");
     return;
   }
   ctx.save();
-  ctx.globalAlpha = 1;
+  ctx.setTransform(1,0,0,1,0,0); // Remove all transforms/scale!
+  ctx.globalAlpha = 1.0;
+  let rectX = Math.round(e.x - 55), rectY = Math.round(e.y - 55);
   ctx.fillStyle = "#00F5FF";
-  let boxX = Math.round(e.x - 55), boxY = Math.round(e.y - 55);
-  ctx.fillRect(boxX, boxY, 110, 110);
+  ctx.fillRect(rectX, rectY, 110, 110);
   ctx.strokeStyle = "#D80000";
   ctx.lineWidth = 8;
-  ctx.strokeRect(boxX, boxY, 110, 110);
-  ctx.font = "85px Segoe UI Emoji, Apple Color Emoji, sans-serif";
+  ctx.strokeRect(rectX, rectY, 110, 110);
+  ctx.font = "92px Segoe UI Emoji, Apple Color Emoji, sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
+  // High-contrast emoji per type (🧟 for zombie, 🤖 for bot, 🐦 for bird)
   let emoji = (e.key === "zombie") ? "🧟" : (e.key === "bot") ? "🤖" : (e.key === "bird") ? "🐦" : "❓";
-  ctx.fillStyle = "#222";
-  ctx.fillText(emoji, boxX + 55, boxY + 58);
+  ctx.fillStyle = "#111";
+  ctx.fillText(emoji, e.x, e.y);
   ctx.restore();
+
   if (
-    boxX + 110 > dims.width ||
-    boxY + 110 > dims.height ||
-    boxX < 0 ||
-    boxY < 0
+    rectX + 110 > dims.width ||
+    rectY + 110 > dims.height ||
+    rectX < 0 ||
+    rectY < 0
   ) {
-    console.warn("[DIAGNOSTIC][drawEnemy] Rectangle/emoji outside canvas!", {
-      boxX, boxY, dims, e
-    });
+    console.warn("[DIAGNOSTIC][drawEnemy] Rectangle/emoji out of canvas!", {rectX, rectY, dims, e});
   }
-  /* The original drawing logic is commented:
-  ... original (full body-parts enemy drawing) code ...
-  */
+
+  // All original logic is suppressed for forced diagnostics only!
+  // -- END OVERRIDE --
 }
 
 /**
