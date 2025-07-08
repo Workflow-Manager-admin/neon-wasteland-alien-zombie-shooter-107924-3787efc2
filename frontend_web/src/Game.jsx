@@ -137,39 +137,101 @@ export default function Game() {
 
   // Game loop
   useEffect(() => {
-    // DIAGNOSTIC: Always test-mount canvas and show on initial load, regardless of gameState
+    // [FIX] Suppress all debug/diagnostic popups for normal game (no alerts);
+    //       Direct test draw for player/zombie: always draws these using primitives/emojis,
+    //       even before gameplay starts, for pure visibility diagnostics.
+
     const canvas = canvasRef.current;
     if (!canvas) {
       console.error("[DIAG] Canvas ref is NULL at initial mount!");
-      alert("ALERT: Canvas ref is null at initial mount (should never occur; mounting or ref failure).");
+      // (Suppressed Alert)
       return;
     }
     let ctx = canvas.getContext("2d");
     if (!ctx) {
       console.error("[DIAG] Canvas could not get 2d context. Canvas:", canvas);
-      alert("ALERT: Canvas 2D context creation FAILED—a browser or mounting error occurred!");
+      // (Suppressed Alert)
       return;
     }
-    // Immediate diagnostic drawing for visibility (before game starts)
+    // === Always-visible direct test drawing of player and zombie with *emoji or colored primitives* ===
+    // [EXPLICIT DIAG: This draws simple versions at fixed positions above the ground line]
+    ctx.clearRect(0, 0, dims.width, dims.height);
+    // Draw ground for reference
+    const refGroundY = dims.height - Math.max(48, dims.height * 0.06);
     ctx.save();
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = "#ffff40";
-    ctx.fillRect(0, 0, dims.width, dims.height);
-    ctx.fillStyle = "#ff34aa";
-    ctx.fillRect(30, 30, dims.width - 60, dims.height - 60);
+    ctx.beginPath();
+    ctx.moveTo(0, refGroundY);
+    ctx.lineTo(dims.width, refGroundY);
+    ctx.strokeStyle = "#ff00ff";
+    ctx.lineWidth = 4;
+    ctx.shadowBlur = 12;
+    ctx.shadowColor = "#39ff14";
+    ctx.stroke();
     ctx.restore();
+
+    // Draw very simple player: green circle with thick border, big "👽" emoji above, label text
+    const px = Math.round(dims.width * 0.25), zy = Math.round(dims.width * 0.75);
+    const charY = refGroundY - 56;
     ctx.save();
-    ctx.font = "bold 100px Arial, sans-serif";
-    ctx.fillStyle = "#000";
+    ctx.beginPath();
+    ctx.arc(px, charY, 32, 0, 2 * Math.PI);
+    ctx.fillStyle = "#39ff14";
+    ctx.shadowColor = "#ffff00";
+    ctx.shadowBlur = 16;
+    ctx.fill();
+    ctx.lineWidth = 7;
+    ctx.strokeStyle = "#23243a";
+    ctx.stroke();
+    ctx.font = "bold 44px Segoe UI Emoji";
     ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText("CANVAS DIAGNOSTIC", dims.width / 2, dims.height / 2);
-    ctx.font = "bold 64px Segoe UI Emoji, Apple Color Emoji, sans-serif";
-    ctx.fillText("🧪", dims.width / 2, 110);
+    ctx.textBaseline = "bottom";
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1.0;
+    ctx.fillStyle = "#000";
+    ctx.fillText("👽", px, charY - 8);
+    ctx.font = "bold 18px Arial";
+    ctx.fillStyle = "#39ff14";
+    ctx.textBaseline = "top";
+    ctx.fillText("Player", px, charY + 33);
     ctx.restore();
-    alert("ALERT: Canvas diagnostic draw ran! (If you see this box, canvas is properly rendering and mounting).");
-    console.log("[DIAG] Canvas test-draw completed at", new Date().toISOString());
-    // Main game loop (live only in 'play' state as before)
+
+    // Draw zombie: pink circle with thick border, big "🧟" emoji above, label
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(zy, charY, 32, 0, 2 * Math.PI);
+    ctx.fillStyle = "#fb73fa";
+    ctx.shadowColor = "#aa2c69";
+    ctx.shadowBlur = 20;
+    ctx.fill();
+    ctx.lineWidth = 7;
+    ctx.strokeStyle = "#181925";
+    ctx.stroke();
+    ctx.font = "bold 45px Segoe UI Emoji";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "bottom";
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1.0;
+    ctx.fillStyle = "#000";
+    ctx.fillText("🧟", zy, charY - 8);
+    ctx.font = "bold 18px Arial";
+    ctx.fillStyle = "#fb73fa";
+    ctx.textBaseline = "top";
+    ctx.fillText("Zombie", zy, charY + 33);
+    ctx.restore();
+
+    // Draw brief test label
+    ctx.save();
+    ctx.font = "bold 26px Arial";
+    ctx.fillStyle = "#fff757";
+    ctx.globalAlpha = 1.0;
+    ctx.textAlign = "center";
+    ctx.fillText("Canvas Primitives Test – Both entities MUST be fully visible above line", dims.width / 2, Math.max(50, charY - 70));
+    ctx.restore();
+
+    // No debug popups.
+    // --- End always-on test draw (will be cleared by live draw in actual gameState='play') ---
+
+    // Main game loop as before (only on 'play')
     if (gameState !== "play") return;
     let animId,
       last = performance.now();
