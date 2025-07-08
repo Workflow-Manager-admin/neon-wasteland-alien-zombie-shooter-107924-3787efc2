@@ -137,11 +137,40 @@ export default function Game() {
 
   // Game loop
   useEffect(() => {
-    if (gameState !== "play") return;
+    // DIAGNOSTIC: Always test-mount canvas and show on initial load, regardless of gameState
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas) {
+      console.error("[DIAG] Canvas ref is NULL at initial mount!");
+      alert("ALERT: Canvas ref is null at initial mount (should never occur; mounting or ref failure).");
+      return;
+    }
     let ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    if (!ctx) {
+      console.error("[DIAG] Canvas could not get 2d context. Canvas:", canvas);
+      alert("ALERT: Canvas 2D context creation FAILED—a browser or mounting error occurred!");
+      return;
+    }
+    // Immediate diagnostic drawing for visibility (before game starts)
+    ctx.save();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = "#ffff40";
+    ctx.fillRect(0, 0, dims.width, dims.height);
+    ctx.fillStyle = "#ff34aa";
+    ctx.fillRect(30, 30, dims.width - 60, dims.height - 60);
+    ctx.restore();
+    ctx.save();
+    ctx.font = "bold 100px Arial, sans-serif";
+    ctx.fillStyle = "#000";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("CANVAS DIAGNOSTIC", dims.width / 2, dims.height / 2);
+    ctx.font = "bold 64px Segoe UI Emoji, Apple Color Emoji, sans-serif";
+    ctx.fillText("🧪", dims.width / 2, 110);
+    ctx.restore();
+    alert("ALERT: Canvas diagnostic draw ran! (If you see this box, canvas is properly rendering and mounting).");
+    console.log("[DIAG] Canvas test-draw completed at", new Date().toISOString());
+    // Main game loop (live only in 'play' state as before)
+    if (gameState !== "play") return;
     let animId,
       last = performance.now();
     const loop = (ts) => {
@@ -297,9 +326,10 @@ export default function Game() {
     if (!ctx) return;
     const { width, height } = dims;
 
-    // === DIAGNOSTIC ESCALATION: Highly visible debug output (canvas + alert + console) for first render per session ===
+    // === DIAGNOSTIC ESCALATION: (handled in useEffect now for on-mount visibility)
+    // (Retain for legacy, but should not trigger if new useEffect test ran.)
     if (!window._nw_firstDraw) {
-      // Flash canvas bg to pink/yellow + alert + force log
+      // Already covered in useEffect. Only runs on first actual game frame as fallback.
       ctx.save();
       ctx.globalAlpha = 1;
       ctx.fillStyle = "#ffff40";
