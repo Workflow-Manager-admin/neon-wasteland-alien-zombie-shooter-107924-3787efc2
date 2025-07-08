@@ -83,9 +83,11 @@ export default function Game() {
 
   // Ref state
   const canvasRef = useRef(null);
+  // DIAGNOSTIC FIX: Initialize player y at dims.height-120 instead of y=0. Ensures player is visible just above ground.
+  // See also reset() below for matching logic.
   const playerRef = useRef({
     x: 200,
-    y: 0,
+    y: dims.height - 120, // <-- Start near the bottom
     w: 36,
     h: 56,
     dir: 1,
@@ -94,6 +96,7 @@ export default function Game() {
     health: PLAYER_MAX_HEALTH,
     invulnUntil: 0,
   });
+  // DIAGNOSTIC: All new zombies will spawn with y at near-ground height (see spawnEnemy).
   const enemiesRef = useRef([]);
   const bulletsRef = useRef([]);
   const keysRef = useRef({ left: false, right: false, shoot: false });
@@ -369,6 +372,8 @@ export default function Game() {
     const key = ENEMY_KEYS[Math.floor(Math.random() * ENEMY_KEYS.length)];
     const base = ENEMY_TYPES[key];
     const sideL = Math.random() < 0.5;
+    // DIAGNOSTIC: Always set zombie/bot spawn Y to dims.height-base.h-88 (right above ground line and matching player)
+    // Bird spawns higher for flying effect
     enemiesRef.current = [
       ...enemiesRef.current,
       {
@@ -377,7 +382,7 @@ export default function Game() {
         y:
           key === "bird"
             ? rand(dims.height * 0.22, dims.height * 0.53)
-            : dims.height - base.h - 88,
+            : dims.height - base.h - 88, // Ensure ground enemies visible and aligned for debug
         vx: sideL ? base.speed : -base.speed,
         dead: false,
         flapt: Math.random() * Math.PI * 2,
@@ -401,9 +406,10 @@ export default function Game() {
   function reset() {
     enemiesRef.current = [];
     bulletsRef.current = [];
+    // DIAGNOSTIC: Set player y to dims.height-120 to keep above ground line at every reset.
     playerRef.current = {
       x: Math.floor(dims.width * 0.14),
-      y: dims.height - 120,
+      y: dims.height - 120, // <-- Always place player near the bottom for visibility
       w: 36,
       h: 56,
       dir: 1,
@@ -606,9 +612,10 @@ function drawBG(ctx, w, h) {
  * Rectangle xy and emoji center position are anchored to p.x, p.y only.
  */
 function drawPlayer(ctx, p, dims) {
-  // DIAGNOSTIC: Log all inputs
+  // DIAGNOSTIC: Log all inputs, verify player y is initialized to dims.height - 120 for expected canvas alignment.
+  // The magenta rectangle and emoji should be centered above ground line; if not visible, check player y logic!
   console.log(
-    "[DIAGNOSTIC][OVERRIDE][drawPlayer] Forced visible: ", 
+    "[DIAGNOSTIC][OVERRIDE][drawPlayer] Forced visible (rect+emoji): ", 
     {
       x: p.x, y: p.y, w: p.w, h: p.h, health: p.health,
       dims, now: Date.now()
@@ -619,12 +626,10 @@ function drawPlayer(ctx, p, dims) {
     alert("[drawPlayer][DIAG] ctx is NULL!");
     return;
   }
-  // Completely ignore transforms, alpha, and style logic!
-  // Draw a highly visible, huge magenta rectangle and black emoji at p.x, p.y.
   ctx.save();
-  ctx.setTransform(1,0,0,1,0,0); // Remove all transforms.
+  ctx.setTransform(1,0,0,1,0,0); // No transforms.
   ctx.globalAlpha = 1.0;
-  // Rectangle centered at player x/y (may overlap out of bounds for low values)
+  // The rectangle is now always centered at the same y as initialized (should be visible above ground).
   let rectX = Math.round(p.x - 55), rectY = Math.round(p.y - 55);
   ctx.fillStyle = "#FF00FF";
   ctx.fillRect(rectX, rectY, 110, 110);
@@ -638,7 +643,6 @@ function drawPlayer(ctx, p, dims) {
   ctx.fillText("🧍", p.x, p.y);
   ctx.restore();
 
-  // Additional log if rectangle is out of bounds
   if (
     rectX + 110 > dims.width ||
     rectY + 110 > dims.height ||
@@ -647,8 +651,6 @@ function drawPlayer(ctx, p, dims) {
   ) {
     console.warn("[DIAGNOSTIC][drawPlayer] Rectangle/emoji out of canvas bounds!", {rectX, rectY, dims});
   }
-
-  // Original drawing logic fully suppressed for diagnostic override.
   // -- END OVERRIDE --
 }
 
@@ -659,7 +661,8 @@ function drawPlayer(ctx, p, dims) {
  * Rectangle and emoji are always drawn at e.x/e.y, using only fillRect and fillText.
  */
 function drawEnemy(ctx, e, dims, tick) {
-  // DIAGNOSTIC: Log all entity and render params
+  // DIAGNOSTIC: Log all entity and render params; zombies/bots spawn at dims.height-base.h-88, i.e. rectangles should show near the ground.
+  // Flying enemies ("bird") may appear higher; their rectangles confirm spawn y-logic.
   console.log(
     "[DIAGNOSTIC][OVERRIDE][drawEnemy] Forced visible: ",
     { key: e.key, x: e.x, y: e.y, w: e.w, h: e.h, tick, dims, now: Date.now() }
@@ -670,8 +673,9 @@ function drawEnemy(ctx, e, dims, tick) {
     return;
   }
   ctx.save();
-  ctx.setTransform(1,0,0,1,0,0); // Remove all transforms/scale!
+  ctx.setTransform(1,0,0,1,0,0); // No transforms/scale!
   ctx.globalAlpha = 1.0;
+  // Rectangle drawn at exact initialized y (should be above ground for zombies/bots).
   let rectX = Math.round(e.x - 55), rectY = Math.round(e.y - 55);
   ctx.fillStyle = "#00F5FF";
   ctx.fillRect(rectX, rectY, 110, 110);
@@ -695,8 +699,6 @@ function drawEnemy(ctx, e, dims, tick) {
   ) {
     console.warn("[DIAGNOSTIC][drawEnemy] Rectangle/emoji out of canvas!", {rectX, rectY, dims, e});
   }
-
-  // All original logic is suppressed for forced diagnostics only!
   // -- END OVERRIDE --
 }
 
