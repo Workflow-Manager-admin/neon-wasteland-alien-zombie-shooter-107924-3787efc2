@@ -70,6 +70,59 @@ function chooseBulletEmoji() {
 const PLAYER_MAX_HEALTH = 120;
 const PLAYER_INVULN_FRAMES = 850;
 
+// --- ASSET info ---
+const ASSET_BASE = "/assets/";
+const SPRITES = {
+  player: "player.png", // facing right
+  player_left: "player_left.png",
+  zombie: "zombie.png",
+  bird: "bird.png",
+  bot: "bot.png",
+  bullet: "bullet.png",
+};
+
+/**
+ * Utility: Loads all required sprite images and sets up fallback error handling.
+ * Exposes: images[name], loadedStatus[name] (true if loaded or errored)
+ */
+function useGameSprites() {
+  const [assetsLoaded, setAssetsLoaded] = useState({});
+  const imagesRef = useRef({});
+
+  // Only loads once
+  useEffect(() => {
+    let hasUnmounted = false;
+    const assets = {};
+    const loaded = {};
+    Object.entries(SPRITES).forEach(([key, file]) => {
+      const img = new window.Image();
+      img.src = ASSET_BASE + file;
+      img.onload = () => {
+        loaded[key] = true;
+        imagesRef.current[key] = img;
+        if (!hasUnmounted) setAssetsLoaded({ ...loaded });
+      };
+      img.onerror = () => {
+        loaded[key] = false;
+        imagesRef.current[key] = null;
+        if (!hasUnmounted) setAssetsLoaded({ ...loaded });
+      };
+      // Pre-mount, not in async event
+      imagesRef.current[key] = img;
+    });
+    // update initial state (usually empty)
+    setAssetsLoaded({ ...loaded });
+    return () => {
+      hasUnmounted = true;
+    };
+  }, []); // Load only once
+
+  return {
+    images: imagesRef.current,
+    loaded: assetsLoaded, // if key in loaded, either loaded or failed, if undefined, not yet
+  };
+}
+
 // PUBLIC_INTERFACE
 export default function Game() {
   const [dims, setDims] = useState(getDims());
@@ -83,8 +136,7 @@ export default function Game() {
 
   // Ref state
   const canvasRef = useRef(null);
-  // DIAGNOSTIC FIX: Initialize player y at dims.height-120 instead of y=0. Ensures player is visible just above ground.
-  // See also reset() below for matching logic.
+  // Player, enemies, bullets, keys, timers
   const playerRef = useRef({
     x: 200,
     y: dims.height - 120, // <-- Start near the bottom
@@ -96,12 +148,14 @@ export default function Game() {
     health: PLAYER_MAX_HEALTH,
     invulnUntil: 0,
   });
-  // DIAGNOSTIC: All new zombies will spawn with y at near-ground height (see spawnEnemy).
   const enemiesRef = useRef([]);
   const bulletsRef = useRef([]);
   const keysRef = useRef({ left: false, right: false, shoot: false });
   const tickRef = useRef(0);
   const spawnTimer = useRef(0);
+
+  // PNG asset management
+  const { images: spriteImgs, loaded: loadedSprites } = useGameSprites();
 
   useEffect(() => {
     const onR = () => setDims(getDims());
@@ -147,6 +201,7 @@ export default function Game() {
       return;
     }
     ctx.clearRect(0, 0, dims.width, dims.height);
+    // Diagnostic demo: draw player/zombie reference figures and ground
     const refGroundY = dims.height - Math.max(48, dims.height * 0.06);
     ctx.save();
     ctx.beginPath();
@@ -170,18 +225,24 @@ export default function Game() {
     ctx.lineWidth = 7;
     ctx.strokeStyle = "#23243a";
     ctx.stroke();
-    ctx.font = "bold 44px Segoe UI Emoji";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "bottom";
-    ctx.shadowBlur = 0;
-    ctx.globalAlpha = 1.0;
-    ctx.fillStyle = "#000";
-    ctx.fillText("👽", px, charY - 8);
+
+    if (spriteImgs.player && loadedSprites.player) {
+      ctx.drawImage(spriteImgs.player, px-34, charY-34, 68, 68);
+    } else {
+      ctx.font = "bold 44px Segoe UI Emoji";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "bottom";
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = 1.0;
+      ctx.fillStyle = "#000";
+      ctx.fillText("👽", px, charY - 8);
+    }
     ctx.font = "bold 18px Arial";
     ctx.fillStyle = "#39ff14";
     ctx.textBaseline = "top";
     ctx.fillText("Player", px, charY + 33);
     ctx.restore();
+
     ctx.save();
     ctx.beginPath();
     ctx.arc(zy, charY, 32, 0, 2 * Math.PI);
@@ -192,18 +253,24 @@ export default function Game() {
     ctx.lineWidth = 7;
     ctx.strokeStyle = "#181925";
     ctx.stroke();
-    ctx.font = "bold 45px Segoe UI Emoji";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "bottom";
-    ctx.shadowBlur = 0;
-    ctx.globalAlpha = 1.0;
-    ctx.fillStyle = "#000";
-    ctx.fillText("🧟", zy, charY - 8);
+
+    if (spriteImgs.zombie && loadedSprites.zombie) {
+      ctx.drawImage(spriteImgs.zombie, zy-34, charY-34, 68, 68);
+    } else {
+      ctx.font = "bold 45px Segoe UI Emoji";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "bottom";
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = 1.0;
+      ctx.fillStyle = "#000";
+      ctx.fillText("🧟", zy, charY - 8);
+    }
     ctx.font = "bold 18px Arial";
     ctx.fillStyle = "#fb73fa";
     ctx.textBaseline = "top";
     ctx.fillText("Zombie", zy, charY + 33);
     ctx.restore();
+
     ctx.save();
     ctx.font = "bold 26px Arial";
     ctx.fillStyle = "#fff757";
@@ -218,14 +285,14 @@ export default function Game() {
       last = ts;
       tickRef.current++;
       updateLogic(dt);
-      draw(ctx);
+      draw(ctx, spriteImgs, loadedSprites);
       animId = requestAnimationFrame(loop);
     };
     animId = requestAnimationFrame(loop);
     return () => {
       if (animId) cancelAnimationFrame(animId);
     };
-  }, [gameState, dims]);
+  }, [gameState, dims, loadedSprites]); // Re-run if sprite loads change
 
   function startGame() {
     reset();
@@ -337,33 +404,22 @@ export default function Game() {
     }
   }
 
-  function draw(ctx) {
+  function draw(ctx, spriteImgs, loadedSprites) {
     if (!ctx) return;
     const { width, height } = dims;
-
-    // Log summary per frame
-    try {
-      let eSummary = enemiesRef.current
-        .filter(e => !e.dead)
-        .map(e => `${e.key}@(${e.x.toFixed(1)},${e.y.toFixed(1)})`).join(', ');
-      let p = playerRef.current;
-      console.log(`[INSTRUMENT][draw] Frame${tickRef.current}, ${enemiesRef.current.length} enemies [${eSummary}], player@(${p.x},${p.y}), canvas(${width}x${height})`);
-    } catch(e) {
-      console.warn("[INSTRUMENT][draw] Entity summary log failed", e);
-    }
 
     ctx.clearRect(0, 0, width, height);
     drawBG(ctx, width, height);
 
-    // Draw entities (DIAGNOSTIC OVERRIDE versions)
+    // Draw entities, using asset PNGs with fallback to geometric (neon) shape
     for (const e of enemiesRef.current) {
       if (e.dead) continue;
-      drawEnemy(ctx, e, dims, tickRef.current);
+      drawEnemy(ctx, e, dims, tickRef.current, spriteImgs, loadedSprites);
     }
     for (const b of bulletsRef.current) {
-      drawBullet(ctx, b, dims);
+      drawBullet(ctx, b, dims, spriteImgs, loadedSprites);
     }
-    drawPlayer(ctx, playerRef.current, dims);
+    drawPlayer(ctx, playerRef.current, dims, spriteImgs, loadedSprites);
 
     drawHealthMeter(ctx, playerRef.current, width, height);
   }
@@ -372,8 +428,6 @@ export default function Game() {
     const key = ENEMY_KEYS[Math.floor(Math.random() * ENEMY_KEYS.length)];
     const base = ENEMY_TYPES[key];
     const sideL = Math.random() < 0.5;
-    // DIAGNOSTIC: Always set zombie/bot spawn Y to dims.height-base.h-88 (right above ground line and matching player)
-    // Bird spawns higher for flying effect
     enemiesRef.current = [
       ...enemiesRef.current,
       {
@@ -382,7 +436,7 @@ export default function Game() {
         y:
           key === "bird"
             ? rand(dims.height * 0.22, dims.height * 0.53)
-            : dims.height - base.h - 88, // Ensure ground enemies visible and aligned for debug
+            : dims.height - base.h - 88,
         vx: sideL ? base.speed : -base.speed,
         dead: false,
         flapt: Math.random() * Math.PI * 2,
@@ -406,10 +460,9 @@ export default function Game() {
   function reset() {
     enemiesRef.current = [];
     bulletsRef.current = [];
-    // DIAGNOSTIC: Set player y to dims.height-120 to keep above ground line at every reset.
     playerRef.current = {
       x: Math.floor(dims.width * 0.14),
-      y: dims.height - 120, // <-- Always place player near the bottom for visibility
+      y: dims.height - 120,
       w: 36,
       h: 56,
       dir: 1,
@@ -605,133 +658,146 @@ function drawBG(ctx, w, h) {
 
 /**
  * PUBLIC_INTERFACE
- * Draws the player at position p.x, p.y as a massive, filled, bright rectangle and a large emoji.
- * This code forcibly disables all transforms, alpha, effects, and visual complexity for diagnostic purposes!
- * If this is not visible, there is a critical canvas or context bug.
- * DIAGNOSTIC OVERRIDE: This temporarily disables all "real" player shape logic.
- * Rectangle xy and emoji center position are anchored to p.x, p.y only.
+ * Draws the player using the player.png asset or a neon rectangle as fallback.
  */
-function drawPlayer(ctx, p, dims) {
-  // DIAGNOSTIC: Log all inputs, verify player y is initialized to dims.height - 120 for expected canvas alignment.
-  // The magenta rectangle and emoji should be centered above ground line; if not visible, check player y logic!
-  console.log(
-    "[DIAGNOSTIC][OVERRIDE][drawPlayer] Forced visible (rect+emoji): ", 
-    {
-      x: p.x, y: p.y, w: p.w, h: p.h, health: p.health,
-      dims, now: Date.now()
+function drawPlayer(ctx, p, dims, spriteImgs = {}, loadedSprites = {}) {
+  ctx.save();
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.globalAlpha = 1.0;
+
+  // Determine side: (simple) if p.dir < 0 and we have player_left sprite, flip
+  let facingLeft = p.dir < 0;
+  let img = null;
+
+  if (spriteImgs.player && loadedSprites.player && !facingLeft) {
+    img = spriteImgs.player;
+  } else if (spriteImgs.player_left && loadedSprites.player_left && facingLeft) {
+    img = spriteImgs.player_left;
+  } else if (spriteImgs.player && loadedSprites.player) {
+    img = spriteImgs.player;
+  }
+
+  let pw = 68, ph = 68;
+  let px = Math.round(p.x - pw/2), py = Math.round(p.y - ph/2);
+  if (img) {
+    try {
+      ctx.drawImage(img, px, py, pw, ph);
+    } catch(e) {
+      // If drawImage exception, fallback to neons
+      neonPlayerFallback(ctx, p, dims);
     }
-  );
-  if (!ctx) {
-    console.error("[drawPlayer][DIAG] ctx is NULL!", {p, dims});
-    alert("[drawPlayer][DIAG] ctx is NULL!");
-    return;
-  }
-  ctx.save();
-  ctx.setTransform(1,0,0,1,0,0); // No transforms.
-  ctx.globalAlpha = 1.0;
-  // The rectangle is now always centered at the same y as initialized (should be visible above ground).
-  let rectX = Math.round(p.x - 55), rectY = Math.round(p.y - 55);
-  ctx.fillStyle = "#FF00FF";
-  ctx.fillRect(rectX, rectY, 110, 110);
-  ctx.strokeStyle = "#FFFF00";
-  ctx.lineWidth = 8;
-  ctx.strokeRect(rectX, rectY, 110, 110);
-  ctx.font = "92px Segoe UI Emoji, Apple Color Emoji, sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillStyle = "#111";
-  ctx.fillText("🧍", p.x, p.y);
-  ctx.restore();
-
-  if (
-    rectX + 110 > dims.width ||
-    rectY + 110 > dims.height ||
-    rectX < 0 ||
-    rectY < 0
-  ) {
-    console.warn("[DIAGNOSTIC][drawPlayer] Rectangle/emoji out of canvas bounds!", {rectX, rectY, dims});
-  }
-  // -- END OVERRIDE --
-}
-
-/**
- * PUBLIC_INTERFACE
- * Draws an enemy at e.x,e.y as a huge high-contrast rectangle plus a visually distinct emoji.
- * Ignores all transforms/animations and disables all other logic for maximal visibility.
- * Rectangle and emoji are always drawn at e.x/e.y, using only fillRect and fillText.
- */
-function drawEnemy(ctx, e, dims, tick) {
-  // DIAGNOSTIC: Log all entity and render params; zombies/bots spawn at dims.height-base.h-88, i.e. rectangles should show near the ground.
-  // Flying enemies ("bird") may appear higher; their rectangles confirm spawn y-logic.
-  console.log(
-    "[DIAGNOSTIC][OVERRIDE][drawEnemy] Forced visible: ",
-    { key: e.key, x: e.x, y: e.y, w: e.w, h: e.h, tick, dims, now: Date.now() }
-  );
-  if (!ctx) {
-    console.error("[drawEnemy][DIAG] ctx is NULL!", {e, dims});
-    alert("[drawEnemy][DIAG] ctx is NULL!");
-    return;
-  }
-  ctx.save();
-  ctx.setTransform(1,0,0,1,0,0); // No transforms/scale!
-  ctx.globalAlpha = 1.0;
-  // Rectangle drawn at exact initialized y (should be above ground for zombies/bots).
-  let rectX = Math.round(e.x - 55), rectY = Math.round(e.y - 55);
-  ctx.fillStyle = "#00F5FF";
-  ctx.fillRect(rectX, rectY, 110, 110);
-  ctx.strokeStyle = "#D80000";
-  ctx.lineWidth = 8;
-  ctx.strokeRect(rectX, rectY, 110, 110);
-  ctx.font = "92px Segoe UI Emoji, Apple Color Emoji, sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  // High-contrast emoji per type (🧟 for zombie, 🤖 for bot, 🐦 for bird)
-  let emoji = (e.key === "zombie") ? "🧟" : (e.key === "bot") ? "🤖" : (e.key === "bird") ? "🐦" : "❓";
-  ctx.fillStyle = "#111";
-  ctx.fillText(emoji, e.x, e.y);
-  ctx.restore();
-
-  if (
-    rectX + 110 > dims.width ||
-    rectY + 110 > dims.height ||
-    rectX < 0 ||
-    rectY < 0
-  ) {
-    console.warn("[DIAGNOSTIC][drawEnemy] Rectangle/emoji out of canvas!", {rectX, rectY, dims, e});
-  }
-  // -- END OVERRIDE --
-}
-
-/**
- * PUBLIC_INTERFACE
- * Draws a bullet as an emoji or neon glowing projectile.
- */
-function drawBullet(ctx, b, dims) {
-  ctx.save();
-  if (b.emoji && Math.random() > 0.15) {
-    ctx.font = "bold 31px Segoe UI Emoji, Apple Color Emoji, Noto Color Emoji, sans-serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.shadowColor = "#2ecffd";
-    ctx.shadowBlur = 15;
-    ctx.globalAlpha = 1;
-    ctx.fillText(b.emoji, b.x, b.y + 1);
   } else {
-    ctx.globalAlpha = 1;
-    ctx.shadowColor = "#39ff14";
-    ctx.shadowBlur = 19;
-    ctx.beginPath();
-    ctx.arc(b.x, b.y, 11, 0, 2 * Math.PI);
-    ctx.fillStyle = "#6efd9a";
-    ctx.fill();
-    ctx.shadowColor = "#fff";
-    ctx.shadowBlur = 7;
-    ctx.beginPath();
-    ctx.arc(b.x, b.y, 5, 0, 2 * Math.PI);
-    ctx.fillStyle = "#39ff14";
-    ctx.fill();
+    neonPlayerFallback(ctx, p, dims);
   }
   ctx.restore();
+}
+
+// Draws fallback neon shape for player
+function neonPlayerFallback(ctx, p, dims) {
+  let rectX = Math.round(p.x - 34), rectY = Math.round(p.y - 34);
+  ctx.fillStyle = "#FF00FF";
+  ctx.shadowColor = "#ffff00";
+  ctx.shadowBlur = 19;
+  ctx.fillRect(rectX, rectY, 68, 68);
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = "#FFFF00";
+  ctx.lineWidth = 4;
+  ctx.strokeRect(rectX, rectY, 68, 68);
+}
+
+/**
+ * PUBLIC_INTERFACE
+ * Draws an enemy using its asset PNG or neon fallback shape.
+ */
+function drawEnemy(ctx, e, dims, tick, spriteImgs = {}, loadedSprites = {}) {
+  ctx.save();
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.globalAlpha = 1.0;
+  let img = null;
+  let w = 64, h = 64;
+
+  if (e.key === "zombie" && spriteImgs.zombie && loadedSprites.zombie) img = spriteImgs.zombie;
+  else if (e.key === "bot" && spriteImgs.bot && loadedSprites.bot) img = spriteImgs.bot;
+  else if (e.key === "bird" && spriteImgs.bird && loadedSprites.bird) img = spriteImgs.bird;
+
+  let px = Math.round(e.x - w/2), py = Math.round(e.y - h/2);
+  if (img) {
+    try {
+      ctx.drawImage(img, px, py, w, h);
+    } catch (err) {
+      neonEnemyFallback(ctx, e, dims);
+    }
+  } else {
+    neonEnemyFallback(ctx, e, dims);
+  }
+  ctx.restore();
+}
+
+// Draws fallback neon shape for enemy, with emoji type color cue
+function neonEnemyFallback(ctx, e, dims) {
+  let rectX = Math.round(e.x - 32), rectY = Math.round(e.y - 32);
+  let color = "#00F5FF", border = "#D80000";
+  if (e.key === "zombie") {
+    color = "#00F5FF";
+    border = "#D80000";
+  } else if (e.key === "bot") {
+    color = "#aa2c69";
+    border = "#fff";
+  } else if (e.key === "bird") {
+    color = "#2ecffd";
+    border = "#39ff14";
+  }
+  ctx.shadowBlur = 15;
+  ctx.shadowColor = color;
+  ctx.fillStyle = color;
+  ctx.fillRect(rectX, rectY, 64, 64);
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = border;
+  ctx.lineWidth = 4;
+  ctx.strokeRect(rectX, rectY, 64, 64);
+}
+
+/**
+ * PUBLIC_INTERFACE
+ * Draws a bullet using bullet.png or as neon projectile (fallback).
+ */
+function drawBullet(ctx, b, dims, spriteImgs = {}, loadedSprites = {}) {
+  ctx.save();
+  let useImg = spriteImgs.bullet && loadedSprites.bullet;
+  let w = 29, h = 18;
+  let bx = b.x - w/2, by = b.y - h/2;
+
+  if (useImg) {
+    try {
+      ctx.globalAlpha = 0.95;
+      ctx.shadowColor = "#39ff14";
+      ctx.shadowBlur = 7;
+      ctx.drawImage(spriteImgs.bullet, bx, by, w, h);
+      ctx.shadowBlur = 0;
+    } catch (err) {
+      neonBulletFallback(ctx, b);
+    }
+  } else {
+    neonBulletFallback(ctx, b);
+  }
+  ctx.restore();
+}
+
+// Draws neon bullet fallback (glowing circle)
+function neonBulletFallback(ctx, b) {
+  ctx.globalAlpha = 1;
+  ctx.shadowColor = "#6efd9a";
+  ctx.shadowBlur = 19;
+  ctx.beginPath();
+  ctx.arc(b.x, b.y, 11, 0, 2 * Math.PI);
+  ctx.fillStyle = "#6efd9a";
+  ctx.fill();
+  ctx.shadowColor = "#fff";
+  ctx.shadowBlur = 8;
+  ctx.beginPath();
+  ctx.arc(b.x, b.y, 5, 0, 2 * Math.PI);
+  ctx.fillStyle = "#39ff14";
+  ctx.fill();
 }
 
 /**
