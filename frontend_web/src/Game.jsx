@@ -297,6 +297,28 @@ export default function Game() {
     if (!ctx) return;
     const { width, height } = dims;
 
+    // === DIAGNOSTIC ESCALATION: Highly visible debug output (canvas + alert + console) for first render per session ===
+    if (!window._nw_firstDraw) {
+      // Flash canvas bg to pink/yellow + alert + force log
+      ctx.save();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = "#ffff40";
+      ctx.fillRect(0, 0, width, height);
+      ctx.fillStyle = "#ff34aa";
+      ctx.fillRect(30, 30, width - 60, height - 60);
+      ctx.restore();
+      ctx.save();
+      ctx.font = "bold 100px Arial, sans-serif";
+      ctx.fillStyle = "#000";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText("CANVAS TEST", width / 2, height / 2);
+      ctx.restore();
+      alert("ALERT: Canvas first draw called! (If you see this, canvas is rendering)");
+      console.log("[ESCALATION] Canvas first draw block ran");
+      window._nw_firstDraw = true;
+    }
+
     // DEBUG: Large visible rectangle and emoji at the very start of every render, and log to console (only once per frame)
     ctx.save();
     ctx.globalAlpha = 0.84;
