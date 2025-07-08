@@ -529,121 +529,190 @@ function drawBG(ctx, w, h) {
   ctx.globalAlpha = 1.0;
 }
 
-// PUBLIC_INTERFACE
-// Draws the player as neon alien/humanoid with gun. Gun and arm extend left/right based on facing.
+/**
+ * PUBLIC_INTERFACE
+ * Draws the player as a neon alien/humanoid with gun. Gun and arm extend left/right based on facing.
+ * All body parts and gun must be clearly visible and proportioned above the ground, taking into account canvas scaling.
+ * 
+ * - Baseline for player is always at ground level (calculated from canvas height).
+ * - Responsive scaling used for desktop/mobile.
+ * - Coherent y-origin and clear separation between torso, legs, arms, head, and weapon.
+ */
 function drawPlayer(ctx, p, dims) {
   ctx.save();
-  ctx.translate(p.x, dims.height - 120);
 
-  // Gun barrel coordinates for bullets
-  const barrelX = p.dir === 1 ? 22 : -22, barrelY = -20;
+  // Establish the ground y-position based on canvas height (so: player feet touch this ground, all body above it)
+  // Canvas ground is at y = dims.height - 50px margin for safety
+  const groundY = dims.height - Math.max(48, dims.height * 0.06);
 
-  // Muzzle flash effect when shooting
-  if (p.cd > 130 && p.cd < 170) {
-    ctx.save();
-    ctx.globalAlpha = 0.82;
-    ctx.shadowColor = "#2ecffd";
-    ctx.shadowBlur = 28;
-    ctx.strokeStyle = "#39ff14";
-    ctx.lineWidth = 7.3;
-    ctx.beginPath();
-    ctx.moveTo(barrelX, barrelY);
-    ctx.lineTo(p.dir === 1 ? barrelX + 15 : barrelX - 15, barrelY + 5);
-    ctx.stroke();
-    ctx.globalAlpha = 0.37;
-    ctx.beginPath();
-    ctx.arc(barrelX, barrelY, 13, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.restore();
-  }
+  // "Base" of player character (feet position)
+  ctx.translate(p.x, groundY);
 
-  // Draw cartoon alien/humanoid body (neon)
+  // -- Player body proportions (scale for mobile/desktop) --
+  // Allow overall player height to respond to canvas size (but don't allow it to get too tiny or too huge)
+  const idealCharH = Math.max(62, Math.min(0.18 * dims.height, 108)); // target 18% of canvas, never <62px never >108px
+  const bodyLen = Math.round(idealCharH * 0.36);
+  const headH = Math.round(idealCharH * 0.31);
+  const headW = Math.round(idealCharH * 0.27);
+  const torsoH = Math.round(bodyLen);
+  const torsoW = Math.round(bodyLen * 0.62);
+  const legL = Math.round(idealCharH * 0.32);
+  const armL = Math.round(bodyLen * 1.09);
+  // Arm thickness
+  const armW = Math.max(5, Math.round(bodyLen * 0.18));
+  // Gun
+  const gunW = Math.max(idealCharH * 0.40, 21);
+  const gunH = Math.max(idealCharH * 0.10, 10);
+  // Adjust leg y anchor to prevent "sinking"
+  const legYBase = legL + 2;
+
+  // Which direction is player facing for arm/gun
+  const dir = p.dir === 1 ? 1 : -1;
+
+  // --- Draw Legs (behind body) ---
   ctx.save();
-  ctx.shadowColor = "#39ff14";
-  ctx.shadowBlur = 15;
-  ctx.fillStyle = "#552bfe";
-  ctx.beginPath(); // torso
-  ctx.ellipse(0, -35, 15, 22, 0, 0, 2 * Math.PI);
-  ctx.fill();
-
-  // Head (oval)
-  ctx.shadowColor = "#f7ffc3";
-  ctx.shadowBlur = 16;
+  ctx.shadowColor = "#aa2c69";
+  ctx.shadowBlur = 10;
+  ctx.strokeStyle = "#39ff14";
+  ctx.lineWidth = Math.max(7, armW);
   ctx.beginPath();
-  ctx.ellipse(0, -60, 15, 19, 0, 0, 2 * Math.PI);
-  ctx.fillStyle = "#39ff14";
-  ctx.fill();
-
-  // Head accent (eye)
-  ctx.shadowBlur = 3;
-  ctx.fillStyle = "#aa2c69";
-  ctx.beginPath();
-  ctx.ellipse(0, -66, 4.5, 5.5, 0, 0, 2 * Math.PI);
-  ctx.fill();
-
-  // Arms (one holding gun, other down)
-  ctx.save();
-  ctx.lineCap = "round";
-  ctx.strokeStyle = "#fff";
-  ctx.lineWidth = 7;
-  ctx.shadowColor = "#39ff14";
-  ctx.shadowBlur = 7;
-  ctx.beginPath();
-  ctx.moveTo(-8, -44);
-  ctx.lineTo(p.dir === 1 ? 36 : -36, barrelY);
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(7, -34); // other arm less visible
-  ctx.lineTo(17, -20);
+  ctx.moveTo(-torsoW * 0.28, 0); ctx.lineTo(-torsoW * 0.33, legYBase); // left
+  ctx.moveTo(torsoW * 0.23, 0); ctx.lineTo(torsoW * 0.39, legYBase - 2); // right
   ctx.stroke();
   ctx.restore();
 
-  // Draw gun as a composed shape (rectangle + barrel) + emoji
+  // --- Draw Torso ---
+  ctx.save();
+  ctx.shadowColor = "#39ff14";
+  ctx.shadowBlur = 14;
+  ctx.fillStyle = "#552bfe";
+  ctx.beginPath(); // torso (ellipse)
+  ctx.ellipse(0, -legYBase - torsoH / 2 - 2, torsoW, torsoH, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // --- Arms (one holding gun, one at side) ---
+  // Gun is always in front
+  ctx.save();
+  ctx.lineCap = "round";
+  ctx.shadowColor = "#39ff14";
+  ctx.shadowBlur = 7;
+  ctx.strokeStyle = "#fff";
+  ctx.lineWidth = Math.max(armW, 7);
+  // Gun arm:
+  // The gun arm attaches to upper torso, pointed out horizontally (with vertical offset for slight natural angle)
+  ctx.beginPath();
+  ctx.moveTo(-torsoW * 0.45, -legYBase - torsoH * 0.68);
+  ctx.lineTo(dir * (torsoW * 1.32), -legYBase - torsoH * 0.89);
+  ctx.stroke();
+  // Other arm: downward, partially behind torso
+  ctx.beginPath();
+  ctx.moveTo(torsoW * 0.31, -legYBase - torsoH * 0.10);
+  ctx.lineTo(torsoW * 0.75, -legYBase + torsoH * 0.43);
+  ctx.stroke();
+  ctx.restore();
+
+  // --- Draw Gun (after arms so gun is fully visible as above arms) ---
   ctx.save();
   ctx.shadowColor = "#2ecffd";
   ctx.shadowBlur = 8;
-  ctx.fillStyle = "#191925";
-  ctx.fillRect(barrelX - (p.dir === 1 ? 3 : 9), barrelY - 4, 18, 8);
-  ctx.fillStyle = "#2ecffd";
-  ctx.fillRect(barrelX + (p.dir === 1 ? 14 : -2), barrelY - 1.5, 10, 3);
-  ctx.restore();
+  const gunBaseX = dir * (torsoW * 1.23);
+  const gunBaseY = -legYBase - torsoH * 0.89 - gunH / 2;
 
-  // Gun emoji for extra fun
+  // Gun body (rectangle)
+  ctx.fillStyle = "#191925";
+  ctx.fillRect(gunBaseX, gunBaseY, dir * gunW, gunH);
+  // Gun barrel (neon blue accent)
+  ctx.fillStyle = "#2ecffd";
+  ctx.fillRect(
+    gunBaseX + dir * (gunW - gunH * 0.3),
+    gunBaseY + gunH * 0.2,
+    dir * Math.max(gunH * 1.05, 8),
+    gunH * 0.40
+  );
+  // Muzzle flash effect
+  if (p.cd > 130 && p.cd < 170) {
+    ctx.save();
+    ctx.globalAlpha = 0.85;
+    ctx.shadowColor = "#2ecffd";
+    ctx.shadowBlur = Math.max(24, gunH * 2.2);
+    ctx.strokeStyle = "#39ff14";
+    ctx.lineWidth = gunH * 0.94;
+    ctx.beginPath();
+    ctx.moveTo(
+      gunBaseX + dir * (gunW + gunH * 0.89),
+      gunBaseY + gunH * 0.47
+    );
+    ctx.lineTo(
+      gunBaseX + dir * (gunW + gunH * 1.75),
+      gunBaseY + gunH * 0.60
+    );
+    ctx.stroke();
+    ctx.globalAlpha = 0.33;
+    ctx.beginPath();
+    ctx.arc(
+      gunBaseX + dir * (gunW + gunH * 1.8),
+      gunBaseY + gunH * 0.83,
+      gunH * 0.68,
+      0,
+      Math.PI * 2
+    );
+    ctx.stroke();
+    ctx.restore();
+  }
+  // Gun emoji
   ctx.save();
-  ctx.font = "20px Segoe UI Emoji, Apple Color Emoji, sans-serif";
-  ctx.globalAlpha = 0.95;
+  ctx.font = `${Math.round(gunH * 1.45)}px Segoe UI Emoji, Apple Color Emoji, sans-serif`;
+  ctx.globalAlpha = 0.98;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText("🔫", barrelX + (p.dir === 1 ? 7: -7), barrelY);
+  ctx.fillText(
+    "🔫",
+    gunBaseX + dir * gunW * 0.62,
+    gunBaseY + gunH * 0.45
+  );
+  ctx.restore();
   ctx.restore();
 
-  ctx.restore();
-
-  // Legs
+  // --- Head (above torso, with eye/accent) ---
   ctx.save();
-  ctx.shadowColor = "#aa2c69";
-  ctx.shadowBlur = 12;
-  ctx.strokeStyle = "#39ff14";
-  ctx.lineWidth = 8;
+  ctx.shadowColor = "#f7ffc3";
+  ctx.shadowBlur = 18;
   ctx.beginPath();
-  ctx.moveTo(-6, -14); ctx.lineTo(-8, 12); // left
-  ctx.moveTo(6, -14); ctx.lineTo(9, 13);   // right
-  ctx.stroke();
+  ctx.ellipse(0, -legYBase - torsoH - headH / 2, headW, headH, 0, 0, Math.PI * 2);
+  ctx.fillStyle = "#39ff14";
+  ctx.fill();
+
+  // Eye/accent
+  ctx.shadowBlur = 6;
+  ctx.fillStyle = "#aa2c69";
+  ctx.beginPath();
+  ctx.ellipse(
+    0,
+    -legYBase - torsoH - headH / 2 - Math.max(5, headH * 0.14),
+    headW * 0.29,
+    headH * 0.27,
+    0,
+    0,
+    Math.PI * 2
+  );
+  ctx.fill();
   ctx.restore();
 
-  // Invulnerability flash overlay
+  // Invulnerability flash overlay ("shield effect" over whole body, head, arms, and gun)
   if (p.invulnUntil && Date.now() < p.invulnUntil) {
     ctx.save();
-    ctx.globalAlpha = 0.38 + 0.22 * Math.sin(Date.now() / 110);
+    ctx.globalAlpha = 0.22 + 0.22 * Math.sin(Date.now() / 110);
     ctx.fillStyle = "#fff";
     ctx.beginPath();
-    ctx.arc(0, -25, 36, 0, Math.PI * 2);
+    ctx.arc(0, -legYBase - torsoH * 0.4, idealCharH * 0.66, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
 
   ctx.restore();
 }
+
 
 // PUBLIC_INTERFACE
 // Render a bullet as an emoji or neon glowing circle
@@ -792,89 +861,131 @@ function drawEnemy(ctx, e, dims, tick) {
       ctx.restore();
     }
   } else {
-    // Zombie: body is vertical rectangle, ovoid neon head, stubby arms/legs, glowing eyes
+    /**
+     * Zombie: refactored for visibility, clear proportions/limbs/face.
+     * Feet reliably touch the "ground", rest is above.
+     */
     ctx.save();
-    ctx.shadowColor = "#39ff14";
+
+    // Calculate "canvas ground level" and align zombie so feet never sink
+    const groundY = dims.height - Math.max(42, dims.height * 0.05);
+    // Use entity h/w for scaling, don't trust e.y exactly: Always draw from ground up
+    const zH = Math.max(54, e.h * 1.08, dims.height * 0.13); // 13% canvas height minimum
+    const zW = Math.max(28, e.w * 0.95, dims.width * 0.045);
+    const legL = Math.round(zH * 0.30);
+    const torsoH = Math.round(zH * 0.34);
+    const torsoW = Math.round(zW * 0.82);
+    const headH = Math.round(zH * 0.29);
+    const headW = Math.round(zW * 0.93);
+
+    // Anchor at feet
+    ctx.translate(e.x, groundY);
+
+    // --- Draw Legs ---
+    ctx.save();
+    ctx.shadowColor = "#aa2c69";
+    ctx.shadowBlur = 7;
+    ctx.strokeStyle = "#39ff14";
+    ctx.lineWidth = Math.max(6.2, torsoW * 0.22);
+    ctx.beginPath();
+    ctx.moveTo(-torsoW * 0.24, 0); // left leg
+    ctx.lineTo(-torsoW * 0.34, legL * 1.08);
+    ctx.moveTo(torsoW * 0.21, 0);
+    ctx.lineTo(torsoW * 0.39, legL * 1.06);
+    ctx.stroke();
+    ctx.restore();
+
+    // --- Torso (body, glowing rect+rounded) ---
+    ctx.save();
+    ctx.shadowColor = "#6efd9a";
     ctx.shadowBlur = 14;
-    let w = e.w, h = e.h;
-    // Torso
     ctx.fillStyle = "#6efd9a";
-    ctx.fillRect(e.x - w / 2 + 5, e.y - h / 2 + 20, w-10, h-28);
-    // Head (oval)
+    ctx.beginPath();
+    ctx.roundRect(
+      -torsoW / 2,
+      -legL - torsoH,
+      torsoW,
+      torsoH + 7,
+      Math.max(7, torsoW * 0.24)
+    );
+    ctx.fill();
+    ctx.restore();
+
+    // --- Arms (stubby, out for a "rawr" effect) ---
     ctx.save();
-    ctx.shadowBlur = 16;
+    ctx.shadowColor = "#6efd9a";
+    ctx.shadowBlur = 7;
+    ctx.strokeStyle = "#6efd9a";
+    ctx.lineWidth = Math.max(4.4, torsoW * 0.18);
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    // Left arm
+    ctx.moveTo(-torsoW * 0.47, -legL - torsoH / 2);
+    ctx.lineTo(-torsoW * 0.97, -legL - torsoH / 1.7 + 6 * Math.sin(Date.now() / 160));
+    // Right arm
+    ctx.moveTo(torsoW * 0.44, -legL - torsoH / 2.05);
+    ctx.lineTo(torsoW * 0.91, -legL - torsoH / 1.7 + 5 * Math.cos(Date.now() / 170));
+    ctx.stroke();
+    ctx.restore();
+
+    // --- Head (neon green oval, on top of torso) ---
+    ctx.save();
+    ctx.shadowBlur = 18;
     ctx.fillStyle = "#39ff14";
     ctx.beginPath();
-    ctx.ellipse(e.x, e.y - h/2 + 26, 17, 18, Math.PI * 0.06, 0, 2 * Math.PI);
+    ctx.ellipse(
+      0, //x
+      -legL - torsoH - headH / 2 + 2,
+      headW, headH, Math.PI * 0.04, 0, Math.PI * 2
+    );
     ctx.fill();
+
+    // Forehead accent (subtle white spot)
+    ctx.globalAlpha = 0.14;
+    ctx.beginPath();
+    ctx.arc(-2, -legL - torsoH - headH / 2 + Math.max(5, headH * 0.28), headW * 0.35, 0, Math.PI * 2);
+    ctx.fillStyle = "#fff";
+    ctx.fill();
+    ctx.globalAlpha = 1.0;
     ctx.restore();
-    // Eyes (glow pink/white)
+
+    // --- Eyes (glow pink/white) ---
     ctx.save();
-    ctx.shadowBlur = 9;
+    ctx.shadowBlur = Math.max(Math.round(headH * 0.39), 7);
+    // Left
     ctx.fillStyle = "#fb73fa";
     ctx.beginPath();
-    ctx.arc(e.x - 7, e.y - h/2 + 24, 3.9, 0, 2 * Math.PI);
+    ctx.arc(-headW * 0.32, -legL - torsoH - headH / 2 - 2, headW * 0.23, 0, 2 * Math.PI);
     ctx.fill();
-    ctx.beginPath();
+    // Right
     ctx.shadowColor = "#fff";
     ctx.fillStyle = "#fff";
-    ctx.arc(e.x + 6, e.y - h/2 + 26, 2.9, 0, 2 * Math.PI);
+    ctx.beginPath();
+    ctx.arc(headW * 0.28, -legL - torsoH - headH / 2 - 0.5, headW * 0.19, 0, 2 * Math.PI);
     ctx.fill();
     ctx.restore();
-    // Mouth
+
+    // --- Mouth: jagged neon frown
     ctx.save();
     ctx.shadowBlur = 0;
     ctx.strokeStyle = "#aa2c69";
-    ctx.lineWidth = 2.5;
+    ctx.lineWidth = Math.max(2, headW * 0.13);
     ctx.beginPath();
-    ctx.arc(e.x, e.y- h/2+34, 6, Math.PI*0.19, Math.PI*0.77);
+    ctx.arc(
+      0,
+      -legL - torsoH - headH / 2 + headH * 0.55,
+      headW * 0.38,
+      Math.PI * 0.20, Math.PI * 0.78
+    );
     ctx.stroke();
     ctx.restore();
 
-    // Arms
-    ctx.save();
-    ctx.shadowColor = "#6efd9a";
-    ctx.shadowBlur = 8;
-    ctx.strokeStyle = "#6efd9a";
-    ctx.lineWidth = 5.4;
-    ctx.lineCap = "round";
-    ctx.beginPath();
-    ctx.moveTo(e.x - w/2+6, e.y - h/2 + 40);
-    ctx.lineTo(e.x - w/2-13, e.y - h/2 + 58 + 4*Math.sin(Date.now()/160));
-    ctx.moveTo(e.x + w/2-6, e.y - h/2 + 44);
-    ctx.lineTo(e.x + w/2+13, e.y - h/2 + 58 + 4*Math.cos(Date.now()/160));
-    ctx.stroke();
-    ctx.restore();
-
-    // Legs
-    ctx.save();
-    ctx.shadowColor = "#aa2c69";
-    ctx.shadowBlur = 8;
-    ctx.strokeStyle = "#39ff14";
-    ctx.lineWidth = 6.7;
-    ctx.beginPath();
-    ctx.moveTo(e.x - 7, e.y + h/2 - 21);
-    ctx.lineTo(e.x - 13, e.y + h/2);
-    ctx.moveTo(e.x + 7, e.y + h/2 - 21);
-    ctx.lineTo(e.x + 15, e.y + h/2);
-    ctx.stroke();
-    ctx.restore();
-
-    // Forehead accent
-    ctx.save();
-    ctx.globalAlpha = 0.12;
-    ctx.beginPath();
-    ctx.arc(e.x - 2, e.y - h/2 + 18, 8, 0, Math.PI * 2);
-    ctx.fillStyle = "#fff";
-    ctx.fill();
-    ctx.restore();
-
-    // Add rare sparkling 🧟 emoji
-    if (tick && tick%121 === 0) {
+    // --- Rare emoji for fun boost ---
+    if (tick && tick % 121 === 0) {
       ctx.save();
-      ctx.font = `${Math.round(w*1.25)}px Segoe UI Emoji, Apple Color Emoji`;
-      ctx.globalAlpha = 0.18;
-      ctx.fillText("🧟", e.x, e.y - h/2 + 22);
+      ctx.font = `${Math.round(headH * 1.25)}px Segoe UI Emoji, Apple Color Emoji`;
+      ctx.globalAlpha = 0.19;
+      ctx.fillText("🧟", 0, -legL - torsoH - headH / 2 + 2);
       ctx.restore();
     }
     ctx.restore();
