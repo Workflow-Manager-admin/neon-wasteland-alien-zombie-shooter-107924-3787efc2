@@ -296,6 +296,30 @@ export default function Game() {
   function draw(ctx) {
     if (!ctx) return;
     const { width, height } = dims;
+
+    // DEBUG: Large visible rectangle and emoji at the very start of every render, and log to console (only once per frame)
+    ctx.save();
+    ctx.globalAlpha = 0.84;
+    ctx.strokeStyle = "#ff0080";
+    ctx.lineWidth = 10;
+    ctx.setLineDash([40, 18]);
+    ctx.strokeRect(44, 44, width - 88, height - 88);
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1.0;
+    ctx.font = "bold 160px Segoe UI Emoji, Apple Color Emoji, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.shadowColor = "#39ff14";
+    ctx.shadowBlur = 25;
+    ctx.fillText("🧪", width/2, 44);
+    ctx.restore();
+
+    // Log on every frame to indicate paint (rate limit to avoid flooding)
+    if (!window._nw_lastPaint || Date.now() - window._nw_lastPaint > 200) {
+      console.log("[DEBUG] Canvas paint OK at", new Date().toISOString());
+      window._nw_lastPaint = Date.now();
+    }
+
     ctx.clearRect(0, 0, width, height);
     drawBG(ctx, width, height);
 
