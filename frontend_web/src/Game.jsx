@@ -517,16 +517,36 @@ export default function Game() {
 // --------- Canvas Neon Drawing Utilities & Helpers ---------
 
 function drawBG(ctx, w, h) {
+  // Neon gradient + scanlines as before
   const g = ctx.createLinearGradient(0, 0, 0, h);
   g.addColorStop(0, "#2b2870");
   g.addColorStop(0.66, "#141429");
   g.addColorStop(1, "#0b0b15");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, w, h);
+
   ctx.globalAlpha = 0.09;
   ctx.fillStyle = SCANLINE_COLOR;
   for (let i = 0; i < h; i += 14) ctx.fillRect(0, i, w, 2);
   ctx.globalAlpha = 1.0;
+
+  // --- VISUAL DEBUG: Draw a NEON ground reference line for sprite placement debugging ---
+  const groundY = h - Math.max(48, h * 0.06);
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(0, groundY);
+  ctx.lineTo(w, groundY);
+  ctx.strokeStyle = "#2ecffd";
+  ctx.lineWidth = 2.5;
+  ctx.shadowColor = "#39ff14";
+  ctx.shadowBlur = 12;
+  ctx.globalAlpha = 0.53;
+  ctx.setLineDash([10, 12]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.globalAlpha = 1.0;
+  ctx.shadowBlur = 0;
+  ctx.restore();
 }
 
 /**
@@ -541,171 +561,163 @@ function drawBG(ctx, w, h) {
 function drawPlayer(ctx, p, dims) {
   ctx.save();
 
-  // Establish the ground y-position based on canvas height (so: player feet touch this ground, all body above it)
-  // Canvas ground is at y = dims.height - 50px margin for safety
+  // DEBUG: always show a ground alignment line (should match the drawBG groundY line)
   const groundY = dims.height - Math.max(48, dims.height * 0.06);
 
-  // "Base" of player character (feet position)
+  // -- Define player anatomy: always draw from ground upward --
   ctx.translate(p.x, groundY);
 
-  // -- Player body proportions (scale for mobile/desktop) --
-  // Allow overall player height to respond to canvas size (but don't allow it to get too tiny or too huge)
-  const idealCharH = Math.max(62, Math.min(0.18 * dims.height, 108)); // target 18% of canvas, never <62px never >108px
-  const bodyLen = Math.round(idealCharH * 0.36);
-  const headH = Math.round(idealCharH * 0.31);
-  const headW = Math.round(idealCharH * 0.27);
-  const torsoH = Math.round(bodyLen);
-  const torsoW = Math.round(bodyLen * 0.62);
-  const legL = Math.round(idealCharH * 0.32);
-  const armL = Math.round(bodyLen * 1.09);
-  // Arm thickness
-  const armW = Math.max(5, Math.round(bodyLen * 0.18));
-  // Gun
-  const gunW = Math.max(idealCharH * 0.40, 21);
-  const gunH = Math.max(idealCharH * 0.10, 10);
-  // Adjust leg y anchor to prevent "sinking"
-  const legYBase = legL + 2;
+  // Responsive, clamped height for full-body visibility
+  const idealCharH = Math.max(62, Math.min(0.18 * dims.height, 108)); // never less than 62px, never more than 108
+  const proportions = {
+    headH: Math.round(idealCharH * 0.32),
+    headW: Math.round(idealCharH * 0.25),
+    torsoH: Math.round(idealCharH * 0.38),
+    torsoW: Math.round(idealCharH * 0.14),
+    legL: Math.round(idealCharH * 0.28),
+    armL: Math.round(idealCharH * 0.57),
+  };
+  const headH = proportions.headH, headW = proportions.headW;
+  const torsoH = proportions.torsoH, torsoW = proportions.torsoW;
+  const legL = proportions.legL, armL = proportions.armL;
+  const armW = Math.max(4, Math.round(idealCharH * 0.11));
+  const gunW = Math.max(idealCharH * 0.34, 18), gunH = Math.max(idealCharH * 0.10, 9);
 
-  // Which direction is player facing for arm/gun
+  // Attach leg origins to y=0 (ground), all body parts above.
+  // Player always fully above ground now.
+  // Facing direction: 1 = right, -1 = left
   const dir = p.dir === 1 ? 1 : -1;
 
-  // --- Draw Legs (behind body) ---
+  // -- DEBUG: Draw bounding box for figure for dev sanity --
+  ctx.save();
+  ctx.globalAlpha = 0.22;
+  ctx.strokeStyle = "#2ecffd";
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6,5]);
+  ctx.strokeRect(-torsoW-8, -legL-torsoH-headH-8, 2*torsoW+16, legL+torsoH+headH+18);
+  ctx.setLineDash([]);
+  ctx.restore();
+
+  // -- Draw legs (thicker, reach to y=0, base of canvas) --
   ctx.save();
   ctx.shadowColor = "#aa2c69";
-  ctx.shadowBlur = 10;
+  ctx.shadowBlur = 8;
   ctx.strokeStyle = "#39ff14";
-  ctx.lineWidth = Math.max(7, armW);
+  ctx.lineWidth = armW+2;
   ctx.beginPath();
-  ctx.moveTo(-torsoW * 0.28, 0); ctx.lineTo(-torsoW * 0.33, legYBase); // left
-  ctx.moveTo(torsoW * 0.23, 0); ctx.lineTo(torsoW * 0.39, legYBase - 2); // right
+  ctx.moveTo(-torsoW*0.6, 0);         ctx.lineTo(-torsoW*0.6, legL);
+  ctx.moveTo(torsoW*0.6, 0);          ctx.lineTo(torsoW*0.6, legL * 0.97);
   ctx.stroke();
   ctx.restore();
 
-  // --- Draw Torso ---
+  // -- Draw torso (rectangle, above legs) --
   ctx.save();
   ctx.shadowColor = "#39ff14";
-  ctx.shadowBlur = 14;
+  ctx.shadowBlur = 11;
   ctx.fillStyle = "#552bfe";
-  ctx.beginPath(); // torso (ellipse)
-  ctx.ellipse(0, -legYBase - torsoH / 2 - 2, torsoW, torsoH, 0, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.fillRect(-torsoW, -legL-torsoH, 2*torsoW, torsoH);
   ctx.restore();
 
-  // --- Arms (one holding gun, one at side) ---
-  // Gun is always in front
+  // -- Draw arms (1 gun arm, 1 relaxed arm) --
   ctx.save();
-  ctx.lineCap = "round";
   ctx.shadowColor = "#39ff14";
   ctx.shadowBlur = 7;
+  ctx.lineWidth = armW;
+  ctx.lineCap = "round";
   ctx.strokeStyle = "#fff";
-  ctx.lineWidth = Math.max(armW, 7);
-  // Gun arm:
-  // The gun arm attaches to upper torso, pointed out horizontally (with vertical offset for slight natural angle)
+  // Gun arm (forward, along gun)
   ctx.beginPath();
-  ctx.moveTo(-torsoW * 0.45, -legYBase - torsoH * 0.68);
-  ctx.lineTo(dir * (torsoW * 1.32), -legYBase - torsoH * 0.89);
+  ctx.moveTo(-torsoW*0.83, -legL-torsoH*0.4);
+  ctx.lineTo(dir*(torsoW*1.45), -legL-torsoH*0.63);
   ctx.stroke();
-  // Other arm: downward, partially behind torso
+  // Off arm
   ctx.beginPath();
-  ctx.moveTo(torsoW * 0.31, -legYBase - torsoH * 0.10);
-  ctx.lineTo(torsoW * 0.75, -legYBase + torsoH * 0.43);
+  ctx.moveTo(torsoW*0.83, -legL-torsoH*0.13);
+  ctx.lineTo(torsoW*1.18, -legL+torsoH*0.31);
   ctx.stroke();
   ctx.restore();
 
-  // --- Draw Gun (after arms so gun is fully visible as above arms) ---
+  // -- Draw gun (attached to end of gun arm, always visible, not below ground!) --
   ctx.save();
   ctx.shadowColor = "#2ecffd";
   ctx.shadowBlur = 8;
-  const gunBaseX = dir * (torsoW * 1.23);
-  const gunBaseY = -legYBase - torsoH * 0.89 - gunH / 2;
-
-  // Gun body (rectangle)
+  const gunBaseX = dir*(torsoW*1.45);
+  const gunBaseY = -legL-torsoH*0.63 - gunH/2;
   ctx.fillStyle = "#191925";
   ctx.fillRect(gunBaseX, gunBaseY, dir * gunW, gunH);
-  // Gun barrel (neon blue accent)
+  // Barrel tip accent 
   ctx.fillStyle = "#2ecffd";
-  ctx.fillRect(
-    gunBaseX + dir * (gunW - gunH * 0.3),
-    gunBaseY + gunH * 0.2,
-    dir * Math.max(gunH * 1.05, 8),
-    gunH * 0.40
-  );
-  // Muzzle flash effect
+  ctx.fillRect(gunBaseX + dir*(gunW-gunH*0.28), gunBaseY+gunH*0.18, dir*Math.max(gunH*0.98,7), gunH*0.39);
+  // Muzzle flash (shooting)
   if (p.cd > 130 && p.cd < 170) {
     ctx.save();
-    ctx.globalAlpha = 0.85;
+    ctx.globalAlpha = 0.83;
     ctx.shadowColor = "#2ecffd";
-    ctx.shadowBlur = Math.max(24, gunH * 2.2);
+    ctx.shadowBlur = Math.max(21, gunH*2.2);
     ctx.strokeStyle = "#39ff14";
-    ctx.lineWidth = gunH * 0.94;
+    ctx.lineWidth = gunH*0.82;
     ctx.beginPath();
-    ctx.moveTo(
-      gunBaseX + dir * (gunW + gunH * 0.89),
-      gunBaseY + gunH * 0.47
-    );
-    ctx.lineTo(
-      gunBaseX + dir * (gunW + gunH * 1.75),
-      gunBaseY + gunH * 0.60
-    );
+    ctx.moveTo(gunBaseX + dir*(gunW+gunH*0.92), gunBaseY+gunH*0.49);
+    ctx.lineTo(gunBaseX + dir*(gunW+gunH*1.71), gunBaseY+gunH*0.55);
     ctx.stroke();
-    ctx.globalAlpha = 0.33;
+    ctx.globalAlpha = 0.28;
     ctx.beginPath();
-    ctx.arc(
-      gunBaseX + dir * (gunW + gunH * 1.8),
-      gunBaseY + gunH * 0.83,
-      gunH * 0.68,
-      0,
-      Math.PI * 2
-    );
+    ctx.arc(gunBaseX + dir * (gunW+gunH*1.71), gunBaseY+gunH*0.67, gunH*0.65, 0, 2*Math.PI);
     ctx.stroke();
     ctx.restore();
   }
-  // Gun emoji
+  // Gun emoji overlaid
   ctx.save();
-  ctx.font = `${Math.round(gunH * 1.45)}px Segoe UI Emoji, Apple Color Emoji, sans-serif`;
-  ctx.globalAlpha = 0.98;
+  ctx.font = `${Math.round(gunH*1.32)}px Segoe UI Emoji, Apple Color Emoji, sans-serif`;
+  ctx.globalAlpha = 0.96;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(
-    "🔫",
-    gunBaseX + dir * gunW * 0.62,
-    gunBaseY + gunH * 0.45
-  );
+  ctx.fillText("🔫", gunBaseX+dir*gunW*0.62, gunBaseY+gunH*0.45);
   ctx.restore();
   ctx.restore();
 
-  // --- Head (above torso, with eye/accent) ---
+  // -- Draw head (on top of torso) --
   ctx.save();
   ctx.shadowColor = "#f7ffc3";
-  ctx.shadowBlur = 18;
+  ctx.shadowBlur = 15;
   ctx.beginPath();
-  ctx.ellipse(0, -legYBase - torsoH - headH / 2, headW, headH, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, -legL-torsoH-headH/2, headW, headH, 0, 0, 2*Math.PI);
   ctx.fillStyle = "#39ff14";
   ctx.fill();
-
-  // Eye/accent
+  // Neon eye/accent
   ctx.shadowBlur = 6;
   ctx.fillStyle = "#aa2c69";
   ctx.beginPath();
-  ctx.ellipse(
-    0,
-    -legYBase - torsoH - headH / 2 - Math.max(5, headH * 0.14),
-    headW * 0.29,
-    headH * 0.27,
-    0,
-    0,
-    Math.PI * 2
-  );
+  ctx.ellipse(0, -legL-torsoH-headH/2 - Math.max(4, headH*0.12), headW*0.28, headH*0.23, 0, 0, 2*Math.PI);
   ctx.fill();
   ctx.restore();
 
-  // Invulnerability flash overlay ("shield effect" over whole body, head, arms, and gun)
+  // -- Visual debugging: show key anchor points --
+  ctx.save();
+  ctx.globalAlpha = 0.5;
+  ctx.fillStyle = "#2ecffd";
+  // Ground/feet
+  ctx.beginPath();
+  ctx.arc(-torsoW*0.6, 0, 4, 0, 2*Math.PI);
+  ctx.arc(torsoW*0.6, 0, 4, 0, 2*Math.PI);
+  ctx.fill();
+  // Head anchor (top)
+  ctx.beginPath();
+  ctx.arc(0, -legL-torsoH-headH, 3.2, 0, 2*Math.PI);
+  ctx.fill();
+  // Center
+  ctx.beginPath();
+  ctx.arc(0, -legL-torsoH/2, 2.6, 0, 2*Math.PI);
+  ctx.fill();
+  ctx.restore();
+
+  // -- Player shield glow for invuln --
   if (p.invulnUntil && Date.now() < p.invulnUntil) {
     ctx.save();
-    ctx.globalAlpha = 0.22 + 0.22 * Math.sin(Date.now() / 110);
+    ctx.globalAlpha = 0.18 + 0.22*Math.sin(Date.now()/110);
     ctx.fillStyle = "#fff";
     ctx.beginPath();
-    ctx.arc(0, -legYBase - torsoH * 0.4, idealCharH * 0.66, 0, Math.PI * 2);
+    ctx.arc(0, -legL-torsoH*0.42, idealCharH*0.59, 0, 2*Math.PI);
     ctx.fill();
     ctx.restore();
   }
@@ -862,132 +874,137 @@ function drawEnemy(ctx, e, dims, tick) {
     }
   } else {
     /**
-     * Zombie: refactored for visibility, clear proportions/limbs/face.
-     * Feet reliably touch the "ground", rest is above.
+     * Zombie: always draw feet-to-head fully above ground using canvas proportions and constant scale
      */
     ctx.save();
 
-    // Calculate "canvas ground level" and align zombie so feet never sink
+    // Guarantee ground anchor
     const groundY = dims.height - Math.max(42, dims.height * 0.05);
-    // Use entity h/w for scaling, don't trust e.y exactly: Always draw from ground up
-    const zH = Math.max(54, e.h * 1.08, dims.height * 0.13); // 13% canvas height minimum
-    const zW = Math.max(28, e.w * 0.95, dims.width * 0.045);
-    const legL = Math.round(zH * 0.30);
-    const torsoH = Math.round(zH * 0.34);
-    const torsoW = Math.round(zW * 0.82);
+
+    // Proportion: always full visible
+    const zH = Math.max(54, Math.min(dims.height * 0.16, 115));
+    const zW = Math.max(27, Math.floor(zH * 0.60));
+    const legL = Math.round(zH * 0.28);
+    const torsoH = Math.round(zH * 0.36);
+    const torsoW = Math.round(zW * 0.86);
     const headH = Math.round(zH * 0.29);
-    const headW = Math.round(zW * 0.93);
+    const headW = Math.round(zW * 0.95);
 
-    // Anchor at feet
+    // DEBUG: bounding rect
     ctx.translate(e.x, groundY);
+    ctx.save();
+    ctx.globalAlpha = 0.20;
+    ctx.strokeStyle = "#fb73fa";
+    ctx.setLineDash([8,6]);
+    ctx.strokeRect(-torsoW-8, -legL-torsoH-headH-9, 2*torsoW+16, legL+torsoH+headH+15);
+    ctx.setLineDash([]);
+    ctx.restore();
 
-    // --- Draw Legs ---
+    // -- LEGS --
     ctx.save();
     ctx.shadowColor = "#aa2c69";
-    ctx.shadowBlur = 7;
+    ctx.shadowBlur = 8;
     ctx.strokeStyle = "#39ff14";
-    ctx.lineWidth = Math.max(6.2, torsoW * 0.22);
+    ctx.lineWidth = Math.max(5.2, torsoW * 0.15);
     ctx.beginPath();
-    ctx.moveTo(-torsoW * 0.24, 0); // left leg
-    ctx.lineTo(-torsoW * 0.34, legL * 1.08);
-    ctx.moveTo(torsoW * 0.21, 0);
-    ctx.lineTo(torsoW * 0.39, legL * 1.06);
+    ctx.moveTo(-torsoW * 0.32, 0); // left foot
+    ctx.lineTo(-torsoW * 0.32, legL);
+    ctx.moveTo(torsoW * 0.32, 0);  // right foot
+    ctx.lineTo(torsoW * 0.32, legL * 0.93);
     ctx.stroke();
     ctx.restore();
 
-    // --- Torso (body, glowing rect+rounded) ---
+    // -- TORSO --
     ctx.save();
     ctx.shadowColor = "#6efd9a";
-    ctx.shadowBlur = 14;
+    ctx.shadowBlur = 13;
     ctx.fillStyle = "#6efd9a";
     ctx.beginPath();
     ctx.roundRect(
-      -torsoW / 2,
-      -legL - torsoH,
-      torsoW,
-      torsoH + 7,
-      Math.max(7, torsoW * 0.24)
+      -torsoW, -legL-torsoH, 2*torsoW, torsoH+7,
+      Math.max(6, torsoW*0.24)
     );
     ctx.fill();
     ctx.restore();
 
-    // --- Arms (stubby, out for a "rawr" effect) ---
+    // -- Arms --
     ctx.save();
     ctx.shadowColor = "#6efd9a";
-    ctx.shadowBlur = 7;
+    ctx.shadowBlur = 6;
     ctx.strokeStyle = "#6efd9a";
-    ctx.lineWidth = Math.max(4.4, torsoW * 0.18);
+    ctx.lineWidth = Math.max(3.4, torsoW * 0.16);
     ctx.lineCap = "round";
     ctx.beginPath();
     // Left arm
-    ctx.moveTo(-torsoW * 0.47, -legL - torsoH / 2);
-    ctx.lineTo(-torsoW * 0.97, -legL - torsoH / 1.7 + 6 * Math.sin(Date.now() / 160));
-    // Right arm
-    ctx.moveTo(torsoW * 0.44, -legL - torsoH / 2.05);
-    ctx.lineTo(torsoW * 0.91, -legL - torsoH / 1.7 + 5 * Math.cos(Date.now() / 170));
+    ctx.moveTo(-torsoW * 0.96, -legL-torsoH/1.65 + 10*Math.sin(Date.now()/200));
+    ctx.lineTo(-torsoW * 0.44, -legL-torsoH/2);
+    // Right arm (a bit higher)
+    ctx.moveTo(torsoW * 0.44, -legL-torsoH/2.35);
+    ctx.lineTo(torsoW * 0.93, -legL-torsoH/1.65 + 11*Math.cos(Date.now()/210));
     ctx.stroke();
     ctx.restore();
 
-    // --- Head (neon green oval, on top of torso) ---
+    // -- Head on top of body
     ctx.save();
-    ctx.shadowBlur = 18;
+    ctx.shadowBlur = 16;
     ctx.fillStyle = "#39ff14";
     ctx.beginPath();
-    ctx.ellipse(
-      0, //x
-      -legL - torsoH - headH / 2 + 2,
-      headW, headH, Math.PI * 0.04, 0, Math.PI * 2
-    );
+    ctx.ellipse(0, -legL-torsoH-headH/2, headW, headH, Math.PI * 0.039, 0, 2*Math.PI);
     ctx.fill();
-
-    // Forehead accent (subtle white spot)
-    ctx.globalAlpha = 0.14;
+    // Forehead accent (white shine)
+    ctx.globalAlpha = 0.13;
     ctx.beginPath();
-    ctx.arc(-2, -legL - torsoH - headH / 2 + Math.max(5, headH * 0.28), headW * 0.35, 0, Math.PI * 2);
+    ctx.arc(-2, -legL-torsoH-headH/2 + Math.max(5, headH*0.27), headW*0.37, 0, 2*Math.PI);
     ctx.fillStyle = "#fff";
     ctx.fill();
     ctx.globalAlpha = 1.0;
     ctx.restore();
 
-    // --- Eyes (glow pink/white) ---
+    // -- Eyes --
     ctx.save();
-    ctx.shadowBlur = Math.max(Math.round(headH * 0.39), 7);
-    // Left
+    ctx.shadowBlur = Math.max(Math.round(headH*0.36), 6);
     ctx.fillStyle = "#fb73fa";
     ctx.beginPath();
-    ctx.arc(-headW * 0.32, -legL - torsoH - headH / 2 - 2, headW * 0.23, 0, 2 * Math.PI);
+    ctx.arc(-headW*0.28, -legL-torsoH-headH/2-2, headW*0.21, 0, 2*Math.PI);
     ctx.fill();
-    // Right
     ctx.shadowColor = "#fff";
     ctx.fillStyle = "#fff";
     ctx.beginPath();
-    ctx.arc(headW * 0.28, -legL - torsoH - headH / 2 - 0.5, headW * 0.19, 0, 2 * Math.PI);
+    ctx.arc(headW*0.26, -legL-torsoH-headH/2-0.6, headW*0.16, 0, 2*Math.PI);
     ctx.fill();
     ctx.restore();
 
-    // --- Mouth: jagged neon frown
+    // -- Mouth
     ctx.save();
     ctx.shadowBlur = 0;
     ctx.strokeStyle = "#aa2c69";
-    ctx.lineWidth = Math.max(2, headW * 0.13);
+    ctx.lineWidth = Math.max(2, headW*0.10);
     ctx.beginPath();
-    ctx.arc(
-      0,
-      -legL - torsoH - headH / 2 + headH * 0.55,
-      headW * 0.38,
-      Math.PI * 0.20, Math.PI * 0.78
-    );
+    ctx.arc(0, -legL-torsoH-headH/2+headH*0.49, headW*0.29, Math.PI*0.22, Math.PI*0.75);
     ctx.stroke();
     ctx.restore();
 
-    // --- Rare emoji for fun boost ---
+    // -- Visual debugging connections: feet/head centers
+    ctx.save();
+    ctx.globalAlpha = 0.48;
+    ctx.fillStyle = "#fb73fa";
+    ctx.beginPath();
+    ctx.arc(-torsoW*0.32, 0, 2.8, 0, 2*Math.PI); // left foot
+    ctx.arc(torsoW*0.32, 0, 2.8, 0, 2*Math.PI);  // right foot
+    ctx.arc(0, -legL-torsoH-headH, 2.4, 0, 2*Math.PI); // top head
+    ctx.arc(0, -legL-torsoH/2, 2.3, 0, 2*Math.PI); // body center
+    ctx.fill();
+    ctx.restore();
+
+    // -- Rare emoji for personality
     if (tick && tick % 121 === 0) {
       ctx.save();
-      ctx.font = `${Math.round(headH * 1.25)}px Segoe UI Emoji, Apple Color Emoji`;
-      ctx.globalAlpha = 0.19;
-      ctx.fillText("🧟", 0, -legL - torsoH - headH / 2 + 2);
+      ctx.font = `${Math.round(headH * 1.15)}px Segoe UI Emoji, Apple Color Emoji`;
+      ctx.globalAlpha = 0.18;
+      ctx.fillText("🧟", 0, -legL-torsoH-headH/2+2);
       ctx.restore();
     }
+
     ctx.restore();
   }
   ctx.restore();
