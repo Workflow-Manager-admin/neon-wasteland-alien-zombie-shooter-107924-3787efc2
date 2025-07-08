@@ -47,6 +47,10 @@ The main brand colors are defined as CSS variables in `src/App.css`:
 
 This template uses pure HTML/CSS components instead of a UI framework. You can find component styles in `src/App.css`. 
 
+#### Sprites and Game Assets
+
+**All character and enemy sprite PNG/SVG images must be placed in `/public/assets/` (NOT in `src/` or `assets/` folder inside `src`). Example: to show the zombie character, `public/assets/zombie.png` is required. The game won't show character graphics if assets are in the wrong place.**
+
 Common components include:
 - Buttons (`.btn`, `.btn-large`)
 - Container (`.container`)

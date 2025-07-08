@@ -9,6 +9,9 @@ import Leaderboard from "./components/Leaderboard.jsx";
  - Place all custom sprite/image files in: ./public/assets/
  - Asset file names must follow conventions: e.g. "zombie.png", "bot.png", "player.png", etc.
  - Filenames are case-sensitive. For each entity, the asset must be in assets/<entitykey>.png or .svg
+
+ // PATCH: If you're using Create React App, you must place all images in the /public/assets/ folder
+ // NOT in src/assets nor in any other folder, since process.env.PUBLIC_URL only serves /public/*
  
  == How do I add a new asset for an entity? ==
  1. Put the file in /public/assets/ or /assets/ (if in dev mode).
@@ -37,6 +40,7 @@ const assetImages = {}; // {key: HTMLImageElement | null}
     let loaded = false;
     for (const filename of asset.files) {
       const img = new window.Image();
+      // Try /assets/ (public) first
       img.src = `${process.env.PUBLIC_URL || ""}/assets/${filename}`;
       img.onload = () => {
         if (!loaded) {
@@ -45,6 +49,7 @@ const assetImages = {}; // {key: HTMLImageElement | null}
         }
       };
       img.onerror = () => {
+        // PATCH: Fallback in dev - try /assets/ from site root
         if (
           !loaded &&
           asset.files.indexOf(filename) === asset.files.length - 1
@@ -682,8 +687,9 @@ function drawBullet(ctx, b, dims) {
 }
 
 /**
- * Draw an enemy - use asset from /assets if present, otherwise draw neon SVG.
- * For new enemy: add to ENEMY_TYPES, supply a sprite, and game handles rest.
+ * Draw an enemy - use /public/assets/<entity>.png if present (must be in /public/assets),
+ * otherwise draw neon SVG fallback shape. 
+ * Cause of invisible sprites: asset image not in correct folder, or asset load failure.
  * @param ctx HTMLCanvasContext
  * @param e entity object
  * @param dims screen size
