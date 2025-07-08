@@ -227,7 +227,7 @@ export default function Game() {
     ctx.stroke();
 
     if (spriteImgs.player && loadedSprites.player) {
-      ctx.drawImage(spriteImgs.player, px-34, charY-34, 68, 68);
+      ctx.drawImage(spriteImgs.player, px - 34, charY - 34, 68, 68);
     } else {
       ctx.font = "bold 44px Segoe UI Emoji";
       ctx.textAlign = "center";
@@ -255,7 +255,7 @@ export default function Game() {
     ctx.stroke();
 
     if (spriteImgs.zombie && loadedSprites.zombie) {
-      ctx.drawImage(spriteImgs.zombie, zy-34, charY-34, 68, 68);
+      ctx.drawImage(spriteImgs.zombie, zy - 34, charY - 34, 68, 68);
     } else {
       ctx.font = "bold 45px Segoe UI Emoji";
       ctx.textAlign = "center";
@@ -411,7 +411,7 @@ export default function Game() {
     ctx.clearRect(0, 0, width, height);
     drawBG(ctx, width, height);
 
-    // Draw entities, using asset PNGs with fallback to geometric (neon) shape
+    // Draw entities, placing a neon shape underneath every PNG (or alone on fallback)
     for (const e of enemiesRef.current) {
       if (e.dead) continue;
       drawEnemy(ctx, e, dims, tickRef.current, spriteImgs, loadedSprites);
@@ -658,17 +658,28 @@ function drawBG(ctx, w, h) {
 
 /**
  * PUBLIC_INTERFACE
- * Draws the player using the player.png asset or a neon rectangle as fallback.
+ * Draws the player with a neon rectangle/circle underneath its PNG sprite,
+ * always ensuring a visible geometric presence even if the image fails.
  */
 function drawPlayer(ctx, p, dims, spriteImgs = {}, loadedSprites = {}) {
   ctx.save();
-  ctx.setTransform(1,0,0,1,0,0);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.globalAlpha = 1.0;
 
-  // Determine side: (simple) if p.dir < 0 and we have player_left sprite, flip
+  // Draw always-visible neon shape (rectangle with neon glow)
+  let rectX = Math.round(p.x - 34), rectY = Math.round(p.y - 34);
+  ctx.fillStyle = "#39ff14";
+  ctx.shadowColor = "#ffff00";
+  ctx.shadowBlur = 20;
+  ctx.fillRect(rectX, rectY, 68, 68);
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = "#39ff14";
+  ctx.lineWidth = 4;
+  ctx.strokeRect(rectX, rectY, 68, 68);
+
+  // PNG sprite handling
   let facingLeft = p.dir < 0;
   let img = null;
-
   if (spriteImgs.player && loadedSprites.player && !facingLeft) {
     img = spriteImgs.player;
   } else if (spriteImgs.player_left && loadedSprites.player_left && facingLeft) {
@@ -676,69 +687,54 @@ function drawPlayer(ctx, p, dims, spriteImgs = {}, loadedSprites = {}) {
   } else if (spriteImgs.player && loadedSprites.player) {
     img = spriteImgs.player;
   }
-
   let pw = 68, ph = 68;
-  let px = Math.round(p.x - pw/2), py = Math.round(p.y - ph/2);
+  let px = Math.round(p.x - pw / 2), py = Math.round(p.y - ph / 2);
+
   if (img) {
     try {
       ctx.drawImage(img, px, py, pw, ph);
-    } catch(e) {
-      // If drawImage exception, fallback to neons
-      neonPlayerFallback(ctx, p, dims);
+    } catch (e) {
+      console.debug("[drawPlayer] Failed to draw player sprite, drawing fallback:", e);
+      neonPlayerShapeCircle(ctx, p, dims);
     }
   } else {
-    neonPlayerFallback(ctx, p, dims);
+    console.debug("[drawPlayer] No player sprite available, drawing fallback.");
+    neonPlayerShapeCircle(ctx, p, dims);
   }
   ctx.restore();
 }
 
-// Draws fallback neon shape for player
-function neonPlayerFallback(ctx, p, dims) {
-  let rectX = Math.round(p.x - 34), rectY = Math.round(p.y - 34);
-  ctx.fillStyle = "#FF00FF";
-  ctx.shadowColor = "#ffff00";
-  ctx.shadowBlur = 19;
-  ctx.fillRect(rectX, rectY, 68, 68);
+// Always-used geometric fallback: circle in case player PNG fails
+function neonPlayerShapeCircle(ctx, p, dims) {
+  ctx.save();
+  ctx.globalAlpha = 1.0;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, 28, 0, 2 * Math.PI);
+  ctx.fillStyle = "#ff00e1";
+  ctx.shadowColor = "#39ff14";
+  ctx.shadowBlur = 23;
+  ctx.fill();
   ctx.shadowBlur = 0;
-  ctx.strokeStyle = "#FFFF00";
-  ctx.lineWidth = 4;
-  ctx.strokeRect(rectX, rectY, 68, 68);
+  ctx.strokeStyle = "#fff700";
+  ctx.lineWidth = 4.2;
+  ctx.stroke();
+  ctx.restore();
 }
 
 /**
  * PUBLIC_INTERFACE
- * Draws an enemy using its asset PNG or neon fallback shape.
+ * Draws an enemy with an always-visible neon rectangle/circle underneath its PNG sprite.
  */
 function drawEnemy(ctx, e, dims, tick, spriteImgs = {}, loadedSprites = {}) {
   ctx.save();
-  ctx.setTransform(1,0,0,1,0,0);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.globalAlpha = 1.0;
-  let img = null;
-  let w = 64, h = 64;
 
-  if (e.key === "zombie" && spriteImgs.zombie && loadedSprites.zombie) img = spriteImgs.zombie;
-  else if (e.key === "bot" && spriteImgs.bot && loadedSprites.bot) img = spriteImgs.bot;
-  else if (e.key === "bird" && spriteImgs.bird && loadedSprites.bird) img = spriteImgs.bird;
-
-  let px = Math.round(e.x - w/2), py = Math.round(e.y - h/2);
-  if (img) {
-    try {
-      ctx.drawImage(img, px, py, w, h);
-    } catch (err) {
-      neonEnemyFallback(ctx, e, dims);
-    }
-  } else {
-    neonEnemyFallback(ctx, e, dims);
-  }
-  ctx.restore();
-}
-
-// Draws fallback neon shape for enemy, with emoji type color cue
-function neonEnemyFallback(ctx, e, dims) {
+  // Always-visible neon "halo" (neon/glow) behind every enemy type
   let rectX = Math.round(e.x - 32), rectY = Math.round(e.y - 32);
   let color = "#00F5FF", border = "#D80000";
   if (e.key === "zombie") {
-    color = "#00F5FF";
+    color = "#39ff14";
     border = "#D80000";
   } else if (e.key === "bot") {
     color = "#aa2c69";
@@ -747,57 +743,96 @@ function neonEnemyFallback(ctx, e, dims) {
     color = "#2ecffd";
     border = "#39ff14";
   }
-  ctx.shadowBlur = 15;
-  ctx.shadowColor = color;
+  // Draw circle under PNG for max visibility
+  ctx.beginPath();
+  ctx.arc(e.x, e.y, 30, 0, 2 * Math.PI);
   ctx.fillStyle = color;
-  ctx.fillRect(rectX, rectY, 64, 64);
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 21;
+  ctx.fill();
   ctx.shadowBlur = 0;
+  ctx.lineWidth = 3.5;
   ctx.strokeStyle = border;
-  ctx.lineWidth = 4;
-  ctx.strokeRect(rectX, rectY, 64, 64);
-}
+  ctx.stroke();
 
-/**
- * PUBLIC_INTERFACE
- * Draws a bullet using bullet.png or as neon projectile (fallback).
- */
-function drawBullet(ctx, b, dims, spriteImgs = {}, loadedSprites = {}) {
-  ctx.save();
-  let useImg = spriteImgs.bullet && loadedSprites.bullet;
-  let w = 29, h = 18;
-  let bx = b.x - w/2, by = b.y - h/2;
+  // PNG sprite rendering
+  let img = null;
+  let w = 64, h = 64;
+  if (e.key === "zombie" && spriteImgs.zombie && loadedSprites.zombie) img = spriteImgs.zombie;
+  else if (e.key === "bot" && spriteImgs.bot && loadedSprites.bot) img = spriteImgs.bot;
+  else if (e.key === "bird" && spriteImgs.bird && loadedSprites.bird) img = spriteImgs.bird;
 
-  if (useImg) {
+  let px = Math.round(e.x - w / 2), py = Math.round(e.y - h / 2);
+  if (img) {
     try {
-      ctx.globalAlpha = 0.95;
-      ctx.shadowColor = "#39ff14";
-      ctx.shadowBlur = 7;
-      ctx.drawImage(spriteImgs.bullet, bx, by, w, h);
-      ctx.shadowBlur = 0;
+      ctx.drawImage(img, px, py, w, h);
     } catch (err) {
-      neonBulletFallback(ctx, b);
+      console.debug(`[drawEnemy] Failed to draw ${e.key} sprite, fallback:`, err);
+      neonEnemyFallbackShape(ctx, e, color, border);
     }
   } else {
-    neonBulletFallback(ctx, b);
+    console.debug(`[drawEnemy] No ${e.key} sprite available, drawing fallback.`);
+    neonEnemyFallbackShape(ctx, e, color, border);
   }
   ctx.restore();
 }
 
-// Draws neon bullet fallback (glowing circle)
-function neonBulletFallback(ctx, b) {
+// Fallback neon shape: neon rectangle for enemies when PNG fails (in addition to circle background)
+function neonEnemyFallbackShape(ctx, e, color, border) {
+  ctx.save();
+  let rectX = Math.round(e.x - 32), rectY = Math.round(e.y - 32);
+  ctx.fillStyle = color;
+  ctx.shadowColor = border;
+  ctx.shadowBlur = 13;
+  ctx.fillRect(rectX, rectY, 64, 64);
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = border;
+  ctx.lineWidth = 3.7;
+  ctx.strokeRect(rectX, rectY, 64, 64);
+  ctx.restore();
+}
+
+/**
+ * PUBLIC_INTERFACE
+ * Draws a bullet with an always-present neon circle underneath its PNG sprite.
+ */
+function drawBullet(ctx, b, dims, spriteImgs = {}, loadedSprites = {}) {
+  ctx.save();
+
+  // Neon glowing circle behind every bullet for always-on visibility (matches emoji/old logic)
   ctx.globalAlpha = 1;
   ctx.shadowColor = "#6efd9a";
-  ctx.shadowBlur = 19;
+  ctx.shadowBlur = 17;
   ctx.beginPath();
-  ctx.arc(b.x, b.y, 11, 0, 2 * Math.PI);
+  ctx.arc(b.x, b.y, 13, 0, 2 * Math.PI);
   ctx.fillStyle = "#6efd9a";
   ctx.fill();
-  ctx.shadowColor = "#fff";
-  ctx.shadowBlur = 8;
+  ctx.shadowBlur = 0;
   ctx.beginPath();
-  ctx.arc(b.x, b.y, 5, 0, 2 * Math.PI);
+  ctx.arc(b.x, b.y, 6.3, 0, 2 * Math.PI);
   ctx.fillStyle = "#39ff14";
   ctx.fill();
+
+  // PNG sprite: bullet is OVER the neon
+  let useImg = spriteImgs.bullet && loadedSprites.bullet;
+  let w = 29, h = 18;
+  let bx = b.x - w / 2, by = b.y - h / 2;
+  if (useImg) {
+    try {
+      ctx.globalAlpha = 0.97;
+      ctx.shadowColor = "#39ff14";
+      ctx.shadowBlur = 6;
+      ctx.drawImage(spriteImgs.bullet, bx, by, w, h);
+      ctx.shadowBlur = 0;
+    } catch (err) {
+      console.debug("[drawBullet] Failed to draw bullet sprite, fallback shape:", err);
+      // fallback shape is already drawn!
+    }
+  } else {
+    // fallback geometric already drawn
+    console.debug("[drawBullet] No bullet sprite available, already drew fallback shape.");
+  }
+  ctx.restore();
 }
 
 /**
