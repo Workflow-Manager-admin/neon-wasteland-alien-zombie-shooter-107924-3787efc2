@@ -65,7 +65,6 @@ const SCANLINE_COLOR = "rgba(58,255,20,0.18)";
 // BULLETS: Use circle/emoji/plasma, randomly picked
 const BULLET_EMOJIS = ["🟢", "💥", "➡️", "•", "⚡"];
 function chooseBulletEmoji() {
-  // Add variation and fun
   return BULLET_EMOJIS[Math.floor(rand(0, BULLET_EMOJIS.length))];
 }
 
@@ -74,7 +73,6 @@ const PLAYER_INVULN_FRAMES = 850;
 
 // PUBLIC_INTERFACE
 export default function Game() {
-  // -- Hooks / State
   const [dims, setDims] = useState(getDims());
   const [gameState, setGS] = useState("menu"); // menu | play | over
   const [score, setScore] = useState(0);
@@ -186,8 +184,8 @@ export default function Game() {
     if (keysRef.current.shoot && p.cd <= 0) {
       let bulletEmoji = chooseBulletEmoji();
       let bulletX =
-        p.x + (p.dir === 1 ? 22 : -22); // Barrel tip offset
-      let bulletY = dims.height - 120 - 20; // Height from bottom
+        p.x + (p.dir === 1 ? 22 : -22);
+      let bulletY = dims.height - 120 - 20;
       bulletsRef.current = [
         ...bulletsRef.current,
         { x: bulletX, y: bulletY, vx: p.dir * 22, r: 13, emoji: bulletEmoji },
@@ -331,7 +329,7 @@ export default function Game() {
             : dims.height - base.h - 88,
         vx: sideL ? base.speed : -base.speed,
         dead: false,
-        flapt: Math.random() * Math.PI * 2, // for birds only
+        flapt: Math.random() * Math.PI * 2,
       },
     ];
   }
@@ -516,6 +514,10 @@ export default function Game() {
 
 // --------- Canvas Neon Drawing Utilities & Helpers ---------
 
+/**
+ * PUBLIC_INTERFACE
+ * Neon-scanned background with reference ground line for debugging
+ */
 function drawBG(ctx, w, h) {
   // Neon gradient + scanlines as before
   const g = ctx.createLinearGradient(0, 0, 0, h);
@@ -530,7 +532,7 @@ function drawBG(ctx, w, h) {
   for (let i = 0; i < h; i += 14) ctx.fillRect(0, i, w, 2);
   ctx.globalAlpha = 1.0;
 
-  // --- VISUAL DEBUG: Draw a NEON ground reference line for sprite placement debugging ---
+  // Draw neon ground reference
   const groundY = h - Math.max(48, h * 0.06);
   ctx.save();
   ctx.beginPath();
@@ -551,173 +553,163 @@ function drawBG(ctx, w, h) {
 
 /**
  * PUBLIC_INTERFACE
- * Draws the player as a neon alien/humanoid with gun. Gun and arm extend left/right based on facing.
- * All body parts and gun must be clearly visible and proportioned above the ground, taking into account canvas scaling.
- * 
- * - Baseline for player is always at ground level (calculated from canvas height).
- * - Responsive scaling used for desktop/mobile.
- * - Coherent y-origin and clear separation between torso, legs, arms, head, and weapon.
+ * Draws the player as a neon alien/humanoid with gun.
+ * Order: legs, torso, arms, gun, head. All body parts always visible, above ground.
  */
 function drawPlayer(ctx, p, dims) {
   ctx.save();
 
-  // DEBUG: always show a ground alignment line (should match the drawBG groundY line)
+  // Use ground line matching drawBG
   const groundY = dims.height - Math.max(48, dims.height * 0.06);
-
-  // -- Define player anatomy: always draw from ground upward --
   ctx.translate(p.x, groundY);
 
-  // Responsive, clamped height for full-body visibility
-  const idealCharH = Math.max(62, Math.min(0.18 * dims.height, 108)); // never less than 62px, never more than 108
-  const proportions = {
-    headH: Math.round(idealCharH * 0.32),
-    headW: Math.round(idealCharH * 0.25),
-    torsoH: Math.round(idealCharH * 0.38),
-    torsoW: Math.round(idealCharH * 0.14),
-    legL: Math.round(idealCharH * 0.28),
-    armL: Math.round(idealCharH * 0.57),
-  };
-  const headH = proportions.headH, headW = proportions.headW;
-  const torsoH = proportions.torsoH, torsoW = proportions.torsoW;
-  const legL = proportions.legL, armL = proportions.armL;
-  const armW = Math.max(4, Math.round(idealCharH * 0.11));
-  const gunW = Math.max(idealCharH * 0.34, 18), gunH = Math.max(idealCharH * 0.10, 9);
-
-  // Attach leg origins to y=0 (ground), all body parts above.
-  // Player always fully above ground now.
-  // Facing direction: 1 = right, -1 = left
+  // Character height scales responsively
+  const idealCharH = Math.max(62, Math.min(dims.height * 0.18, 112));
+  const headH = Math.round(idealCharH * 0.31);
+  const headW = Math.round(idealCharH * 0.25);
+  const torsoH = Math.round(idealCharH * 0.38);
+  const torsoW = Math.round(idealCharH * 0.15);
+  const legL = Math.round(idealCharH * 0.29);
+  const armL = Math.round(idealCharH * 0.57);
+  const armW = Math.max(4, Math.round(idealCharH * 0.12));
+  const gunW = Math.max(idealCharH * 0.36, 19);
+  const gunH = Math.max(idealCharH * 0.12, 10);
   const dir = p.dir === 1 ? 1 : -1;
 
-  // -- DEBUG: Draw bounding box for figure for dev sanity --
+  // DEV: Bounding box debug
   ctx.save();
-  ctx.globalAlpha = 0.22;
+  ctx.globalAlpha = 0.21;
   ctx.strokeStyle = "#2ecffd";
   ctx.lineWidth = 2;
-  ctx.setLineDash([6,5]);
-  ctx.strokeRect(-torsoW-8, -legL-torsoH-headH-8, 2*torsoW+16, legL+torsoH+headH+18);
+  ctx.setLineDash([6, 5]);
+  ctx.strokeRect(-torsoW-9, -legL-torsoH-headH-8, 2*torsoW+18, legL+torsoH+headH+19);
   ctx.setLineDash([]);
   ctx.restore();
 
-  // -- Draw legs (thicker, reach to y=0, base of canvas) --
+  // -- LEGS --
   ctx.save();
   ctx.shadowColor = "#aa2c69";
   ctx.shadowBlur = 8;
   ctx.strokeStyle = "#39ff14";
-  ctx.lineWidth = armW+2;
+  ctx.lineWidth = armW + 2;
+  ctx.lineCap = "round";
   ctx.beginPath();
-  ctx.moveTo(-torsoW*0.6, 0);         ctx.lineTo(-torsoW*0.6, legL);
-  ctx.moveTo(torsoW*0.6, 0);          ctx.lineTo(torsoW*0.6, legL * 0.97);
+  // Left leg
+  ctx.moveTo(-torsoW * 0.74, 0);
+  ctx.lineTo(-torsoW * 0.74, legL);
+  // Right leg
+  ctx.moveTo(torsoW * 0.74, 0);
+  ctx.lineTo(torsoW * 0.74, legL * 0.93);
   ctx.stroke();
   ctx.restore();
 
-  // -- Draw torso (rectangle, above legs) --
+  // -- TORSO --
   ctx.save();
   ctx.shadowColor = "#39ff14";
-  ctx.shadowBlur = 11;
+  ctx.shadowBlur = 12;
   ctx.fillStyle = "#552bfe";
   ctx.fillRect(-torsoW, -legL-torsoH, 2*torsoW, torsoH);
   ctx.restore();
 
-  // -- Draw arms (1 gun arm, 1 relaxed arm) --
+  // -- ARMS --
   ctx.save();
   ctx.shadowColor = "#39ff14";
-  ctx.shadowBlur = 7;
+  ctx.shadowBlur = 8;
   ctx.lineWidth = armW;
   ctx.lineCap = "round";
   ctx.strokeStyle = "#fff";
-  // Gun arm (forward, along gun)
+  // Gun arm (along direction)
   ctx.beginPath();
-  ctx.moveTo(-torsoW*0.83, -legL-torsoH*0.4);
-  ctx.lineTo(dir*(torsoW*1.45), -legL-torsoH*0.63);
+  ctx.moveTo(-torsoW*1.07, -legL-torsoH*0.33);
+  ctx.lineTo(dir*(torsoW*1.58), -legL-torsoH*0.65);
   ctx.stroke();
   // Off arm
   ctx.beginPath();
-  ctx.moveTo(torsoW*0.83, -legL-torsoH*0.13);
-  ctx.lineTo(torsoW*1.18, -legL+torsoH*0.31);
+  ctx.moveTo(torsoW*0.97, -legL-torsoH*0.17);
+  ctx.lineTo(torsoW*1.34, -legL+torsoH*0.295);
   ctx.stroke();
   ctx.restore();
 
-  // -- Draw gun (attached to end of gun arm, always visible, not below ground!) --
+  // -- GUN --
   ctx.save();
   ctx.shadowColor = "#2ecffd";
-  ctx.shadowBlur = 8;
-  const gunBaseX = dir*(torsoW*1.45);
-  const gunBaseY = -legL-torsoH*0.63 - gunH/2;
+  ctx.shadowBlur = 9;
+  const gunBaseX = dir*(torsoW*1.58);
+  const gunBaseY = -legL-torsoH*0.65 - gunH/2;
   ctx.fillStyle = "#191925";
   ctx.fillRect(gunBaseX, gunBaseY, dir * gunW, gunH);
-  // Barrel tip accent 
   ctx.fillStyle = "#2ecffd";
-  ctx.fillRect(gunBaseX + dir*(gunW-gunH*0.28), gunBaseY+gunH*0.18, dir*Math.max(gunH*0.98,7), gunH*0.39);
-  // Muzzle flash (shooting)
+  ctx.fillRect(
+    gunBaseX + dir*(gunW-gunH*0.26),
+    gunBaseY + gunH*0.17,
+    dir*Math.max(gunH*0.9,7),
+    gunH*0.38
+  );
+  // Muzzle flash (if recently shot)
   if (p.cd > 130 && p.cd < 170) {
     ctx.save();
     ctx.globalAlpha = 0.83;
     ctx.shadowColor = "#2ecffd";
-    ctx.shadowBlur = Math.max(21, gunH*2.2);
+    ctx.shadowBlur = Math.max(23, gunH*2.2);
     ctx.strokeStyle = "#39ff14";
-    ctx.lineWidth = gunH*0.82;
+    ctx.lineWidth = gunH*0.86;
     ctx.beginPath();
-    ctx.moveTo(gunBaseX + dir*(gunW+gunH*0.92), gunBaseY+gunH*0.49);
-    ctx.lineTo(gunBaseX + dir*(gunW+gunH*1.71), gunBaseY+gunH*0.55);
+    ctx.moveTo(gunBaseX + dir*(gunW+gunH*0.94), gunBaseY+gunH*0.5);
+    ctx.lineTo(gunBaseX + dir*(gunW+gunH*1.83), gunBaseY+gunH*0.56);
     ctx.stroke();
-    ctx.globalAlpha = 0.28;
+    ctx.globalAlpha = 0.27;
     ctx.beginPath();
-    ctx.arc(gunBaseX + dir * (gunW+gunH*1.71), gunBaseY+gunH*0.67, gunH*0.65, 0, 2*Math.PI);
+    ctx.arc(gunBaseX + dir*(gunW+gunH*1.83), gunBaseY+gunH*0.65, gunH*0.69, 0, 2*Math.PI);
     ctx.stroke();
     ctx.restore();
   }
-  // Gun emoji overlaid
+  // Gun emoji overlay
   ctx.save();
-  ctx.font = `${Math.round(gunH*1.32)}px Segoe UI Emoji, Apple Color Emoji, sans-serif`;
-  ctx.globalAlpha = 0.96;
+  ctx.font = `${Math.round(gunH*1.38)}px Segoe UI Emoji, Apple Color Emoji, sans-serif`;
+  ctx.globalAlpha = 0.97;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText("🔫", gunBaseX+dir*gunW*0.62, gunBaseY+gunH*0.45);
+  ctx.fillText("🔫", gunBaseX+dir*gunW*0.62, gunBaseY+gunH*0.48);
   ctx.restore();
   ctx.restore();
 
-  // -- Draw head (on top of torso) --
+  // -- HEAD --
   ctx.save();
   ctx.shadowColor = "#f7ffc3";
-  ctx.shadowBlur = 15;
+  ctx.shadowBlur = 16;
   ctx.beginPath();
   ctx.ellipse(0, -legL-torsoH-headH/2, headW, headH, 0, 0, 2*Math.PI);
   ctx.fillStyle = "#39ff14";
   ctx.fill();
-  // Neon eye/accent
-  ctx.shadowBlur = 6;
+  ctx.shadowBlur = 7;
   ctx.fillStyle = "#aa2c69";
   ctx.beginPath();
-  ctx.ellipse(0, -legL-torsoH-headH/2 - Math.max(4, headH*0.12), headW*0.28, headH*0.23, 0, 0, 2*Math.PI);
+  ctx.ellipse(0, -legL-torsoH-headH/2 - Math.max(5, headH*0.14), headW*0.28, headH*0.24, 0, 0, 2*Math.PI);
   ctx.fill();
   ctx.restore();
 
-  // -- Visual debugging: show key anchor points --
+  // DEV: Visual debugging anchors
   ctx.save();
-  ctx.globalAlpha = 0.5;
+  ctx.globalAlpha = 0.44;
   ctx.fillStyle = "#2ecffd";
-  // Ground/feet
   ctx.beginPath();
-  ctx.arc(-torsoW*0.6, 0, 4, 0, 2*Math.PI);
-  ctx.arc(torsoW*0.6, 0, 4, 0, 2*Math.PI);
+  ctx.arc(-torsoW*0.74, 0, 3.7, 0, 2*Math.PI);
+  ctx.arc(torsoW*0.74, 0, 3.7, 0, 2*Math.PI);
+  ctx.beginPath();
+  ctx.arc(0, -legL-torsoH-headH, 2.9, 0, 2*Math.PI);
   ctx.fill();
-  // Head anchor (top)
   ctx.beginPath();
-  ctx.arc(0, -legL-torsoH-headH, 3.2, 0, 2*Math.PI);
-  ctx.fill();
-  // Center
-  ctx.beginPath();
-  ctx.arc(0, -legL-torsoH/2, 2.6, 0, 2*Math.PI);
+  ctx.arc(0, -legL-torsoH/2, 2.3, 0, 2*Math.PI);
   ctx.fill();
   ctx.restore();
 
-  // -- Player shield glow for invuln --
+  // Shield effect if invulnerable
   if (p.invulnUntil && Date.now() < p.invulnUntil) {
     ctx.save();
-    ctx.globalAlpha = 0.18 + 0.22*Math.sin(Date.now()/110);
+    ctx.globalAlpha = 0.18 + 0.22*Math.sin(Date.now()/140);
     ctx.fillStyle = "#fff";
     ctx.beginPath();
-    ctx.arc(0, -legL-torsoH*0.42, idealCharH*0.59, 0, 2*Math.PI);
+    ctx.arc(0, -legL-torsoH*0.45, idealCharH*0.59, 0, 2*Math.PI);
     ctx.fill();
     ctx.restore();
   }
@@ -725,12 +717,12 @@ function drawPlayer(ctx, p, dims) {
   ctx.restore();
 }
 
-
-// PUBLIC_INTERFACE
-// Render a bullet as an emoji or neon glowing circle
+/**
+ * PUBLIC_INTERFACE
+ * Draws a bullet as an emoji or neon glowing projectile.
+ */
 function drawBullet(ctx, b, dims) {
   ctx.save();
-  // With 85% probability, use emoji, otherwise plasma-style glowing dot
   if (b.emoji && Math.random() > 0.15) {
     ctx.font = "bold 31px Segoe UI Emoji, Apple Color Emoji, Noto Color Emoji, sans-serif";
     ctx.textAlign = "center";
@@ -757,17 +749,20 @@ function drawBullet(ctx, b, dims) {
   ctx.restore();
 }
 
-// PUBLIC_INTERFACE
-// Draws an enemy using only canvas primitives and/or emoji
+/**
+ * PUBLIC_INTERFACE
+ * Draws enemy on canvas; ZOMBIE: ensures body parts always above ground,
+ * never off-canvas, clean y-origin math, no awkward overlap.
+ * Handles proportionality and order: legs, torso, arms, head.
+ */
 function drawEnemy(ctx, e, dims, tick) {
   ctx.save();
   ctx.globalAlpha = 0.98;
 
   if (e.key === "bird") {
-    // Neon flapping bird - composed ellipse/triangle/wing
+    // Existing bird drawing, unchanged
     const t = (Date.now()/150 + e.flapt) % (2*Math.PI);
     const yBob = Math.sin(t) * 4.5;
-    // Body (oval)
     ctx.save();
     ctx.shadowColor = "#39ff14";
     ctx.shadowBlur = 13;
@@ -775,7 +770,6 @@ function drawEnemy(ctx, e, dims, tick) {
     ctx.ellipse(e.x, e.y + yBob, e.radius, e.radius*0.85, 0, 0, 2*Math.PI);
     ctx.fillStyle = "#2ecffd";
     ctx.fill();
-    // Wing (flap)
     ctx.globalAlpha = 0.25 + 0.30 * Math.abs(Math.cos(t));
     ctx.save();
     ctx.translate(e.x - 3, e.y + yBob - 3);
@@ -786,14 +780,12 @@ function drawEnemy(ctx, e, dims, tick) {
     ctx.fill();
     ctx.restore();
     ctx.globalAlpha = 0.98;
-    // Eye
     ctx.beginPath();
     ctx.arc(e.x + 7, e.y + yBob - 4, 2.8, 0, 2*Math.PI);
     ctx.fillStyle = "#fff";
     ctx.shadowColor = "#fff";
     ctx.shadowBlur = 2;
     ctx.fill();
-    // Beak (triangle)
     ctx.beginPath();
     ctx.moveTo(e.x + e.radius - 1, e.y + yBob);
     ctx.lineTo(e.x + e.radius + 9, e.y + yBob-4);
@@ -802,7 +794,6 @@ function drawEnemy(ctx, e, dims, tick) {
     ctx.fillStyle = "#ffd900";
     ctx.fill();
     ctx.restore();
-    // Occasionally show a "🐦" emoji bounce for extra personality
     if ((tick || 0)%111 < 12) {
       ctx.save();
       ctx.font = `${Math.round(e.radius*2.1)}px Segoe UI Emoji, Apple Color Emoji`;
@@ -811,7 +802,7 @@ function drawEnemy(ctx, e, dims, tick) {
       ctx.restore();
     }
   } else if (e.key === "bot") {
-    // Bot: Rectangle body + robot face accents + glowing eyes (or emoji every few seconds)
+    // Existing bot drawing, unchanged
     ctx.save();
     ctx.shadowColor = e.color;
     ctx.shadowBlur = 13;
@@ -819,7 +810,6 @@ function drawEnemy(ctx, e, dims, tick) {
       h = e.h;
     ctx.fillStyle = e.color;
     ctx.fillRect(e.x - w / 2, e.y - h / 2, w, h);
-    // Robot "antenna"
     ctx.strokeStyle = "#fff";
     ctx.lineWidth = 4;
     ctx.beginPath();
@@ -828,7 +818,6 @@ function drawEnemy(ctx, e, dims, tick) {
     ctx.stroke();
     ctx.restore();
 
-    // Eyes
     ctx.save();
     ctx.shadowColor = "#fff";
     ctx.shadowBlur = 8;
@@ -843,7 +832,6 @@ function drawEnemy(ctx, e, dims, tick) {
     ctx.fill();
     ctx.restore();
 
-    // Neon outline
     ctx.save();
     ctx.globalAlpha = 0.22;
     ctx.strokeStyle = "#fff";
@@ -851,7 +839,6 @@ function drawEnemy(ctx, e, dims, tick) {
     ctx.strokeRect(e.x - w / 2, e.y - h / 2, w, h);
     ctx.restore();
 
-    // Small mouth
     ctx.save();
     ctx.beginPath();
     ctx.strokeStyle = "#fff";
@@ -864,7 +851,6 @@ function drawEnemy(ctx, e, dims, tick) {
     ctx.stroke();
     ctx.restore();
 
-    // Rare personality boost: Draw 🤖 emoji
     if (tick && (tick%143 === 0)) {
       ctx.save();
       ctx.font = `${Math.round(w*1.13)}px Segoe UI Emoji, Apple Color Emoji`;
@@ -874,134 +860,145 @@ function drawEnemy(ctx, e, dims, tick) {
     }
   } else {
     /**
-     * Zombie: always draw feet-to-head fully above ground using canvas proportions and constant scale
+     * ZOMBIE ENEMY: Body parts always fully visible & no clipping. Physics:
+     * - y-origin always at ground line (in-sync with drawBG ground)
+     * - body assembly from feet upwards: legs, torso, arms, head, all above ground
+     * - proportions scale cleanly with canvas for both mobile & desktop
+     * - limbs kept separate to avoid "inside-head" overlap
      */
     ctx.save();
-
-    // Guarantee ground anchor
+    // Ground line anchor for y-origin
     const groundY = dims.height - Math.max(42, dims.height * 0.05);
+    const zH  = Math.max(56, Math.min(dims.height * 0.15, 107));
+    const zW  = Math.max(29, Math.floor(zH * 0.61));
+    const legL   = Math.round(zH * 0.295);
+    const torsoH = Math.round(zH * 0.34);
+    const torsoW = Math.round(zW * 0.83);
+    const headH  = Math.round(zH * 0.25);
+    const headW  = Math.round(zW * 0.91);
 
-    // Proportion: always full visible
-    const zH = Math.max(54, Math.min(dims.height * 0.16, 115));
-    const zW = Math.max(27, Math.floor(zH * 0.60));
-    const legL = Math.round(zH * 0.28);
-    const torsoH = Math.round(zH * 0.36);
-    const torsoW = Math.round(zW * 0.86);
-    const headH = Math.round(zH * 0.29);
-    const headW = Math.round(zW * 0.95);
-
-    // DEBUG: bounding rect
     ctx.translate(e.x, groundY);
+
+    // DEV: Visual bounds
     ctx.save();
-    ctx.globalAlpha = 0.20;
+    ctx.globalAlpha = 0.17;
     ctx.strokeStyle = "#fb73fa";
     ctx.setLineDash([8,6]);
-    ctx.strokeRect(-torsoW-8, -legL-torsoH-headH-9, 2*torsoW+16, legL+torsoH+headH+15);
+    ctx.strokeRect(
+      -torsoW-6, -legL-torsoH-headH-7,
+      2*torsoW+12, legL+torsoH+headH+13
+    );
     ctx.setLineDash([]);
     ctx.restore();
 
-    // -- LEGS --
+    // -- LEGS (distinct, base of zombie, never below ground) --
     ctx.save();
     ctx.shadowColor = "#aa2c69";
     ctx.shadowBlur = 8;
     ctx.strokeStyle = "#39ff14";
-    ctx.lineWidth = Math.max(5.2, torsoW * 0.15);
+    ctx.lineWidth = Math.max(5.1, torsoW * 0.13);
+    ctx.lineCap = "round";
+    // Left leg
+    ctx.globalAlpha = 0.76;
     ctx.beginPath();
-    ctx.moveTo(-torsoW * 0.32, 0); // left foot
-    ctx.lineTo(-torsoW * 0.32, legL);
-    ctx.moveTo(torsoW * 0.32, 0);  // right foot
-    ctx.lineTo(torsoW * 0.32, legL * 0.93);
+    ctx.moveTo(-torsoW * 0.33, 0);
+    ctx.lineTo(-torsoW * 0.34, legL);
+    ctx.stroke();
+    ctx.globalAlpha = 1.0;
+    // Right leg (slightly bent)
+    ctx.beginPath();
+    ctx.moveTo(torsoW * 0.33, 0);
+    ctx.lineTo(torsoW * 0.33, legL * 0.91);
     ctx.stroke();
     ctx.restore();
 
     // -- TORSO --
     ctx.save();
     ctx.shadowColor = "#6efd9a";
-    ctx.shadowBlur = 13;
+    ctx.shadowBlur = 11;
     ctx.fillStyle = "#6efd9a";
     ctx.beginPath();
     ctx.roundRect(
-      -torsoW, -legL-torsoH, 2*torsoW, torsoH+7,
-      Math.max(6, torsoW*0.24)
+      -torsoW, -legL-torsoH, 2*torsoW, torsoH+6,
+      Math.max(6, torsoW*0.22)
     );
     ctx.fill();
     ctx.restore();
 
-    // -- Arms --
+    // -- ARMS (animated, away from head/torso) --
     ctx.save();
     ctx.shadowColor = "#6efd9a";
-    ctx.shadowBlur = 6;
+    ctx.shadowBlur = 7;
     ctx.strokeStyle = "#6efd9a";
-    ctx.lineWidth = Math.max(3.4, torsoW * 0.16);
+    ctx.lineWidth = Math.max(3.0, torsoW * 0.14);
     ctx.lineCap = "round";
     ctx.beginPath();
-    // Left arm
-    ctx.moveTo(-torsoW * 0.96, -legL-torsoH/1.65 + 10*Math.sin(Date.now()/200));
-    ctx.lineTo(-torsoW * 0.44, -legL-torsoH/2);
-    // Right arm (a bit higher)
-    ctx.moveTo(torsoW * 0.44, -legL-torsoH/2.35);
-    ctx.lineTo(torsoW * 0.93, -legL-torsoH/1.65 + 11*Math.cos(Date.now()/210));
+    // Left arm (hanging down and forward, animated)
+    ctx.moveTo(-torsoW * 0.92, -legL-torsoH/1.61 + 9*Math.sin(Date.now()/187));
+    ctx.lineTo(-torsoW * 0.45, -legL-torsoH/1.93 + 3);
+    // Right arm
+    ctx.moveTo(torsoW * 0.46, -legL-torsoH/2.33);
+    ctx.lineTo(torsoW * 0.91, -legL-torsoH/1.67 + 9*Math.cos(Date.now()/203));
     ctx.stroke();
     ctx.restore();
 
-    // -- Head on top of body
+    // -- HEAD (always on top, no body overlap, plenty of space)
     ctx.save();
     ctx.shadowBlur = 16;
     ctx.fillStyle = "#39ff14";
     ctx.beginPath();
-    ctx.ellipse(0, -legL-torsoH-headH/2, headW, headH, Math.PI * 0.039, 0, 2*Math.PI);
+    ctx.ellipse(0, -legL-torsoH-headH/2, headW, headH, 0, 0, 2*Math.PI);
     ctx.fill();
-    // Forehead accent (white shine)
     ctx.globalAlpha = 0.13;
     ctx.beginPath();
-    ctx.arc(-2, -legL-torsoH-headH/2 + Math.max(5, headH*0.27), headW*0.37, 0, 2*Math.PI);
+    ctx.arc(-2, -legL-torsoH-headH/2 + Math.max(5, headH*0.27), headW*0.33, 0, 2*Math.PI);
     ctx.fillStyle = "#fff";
     ctx.fill();
     ctx.globalAlpha = 1.0;
     ctx.restore();
 
-    // -- Eyes --
+    // -- EYES --
     ctx.save();
-    ctx.shadowBlur = Math.max(Math.round(headH*0.36), 6);
+    ctx.shadowBlur = Math.max(Math.round(headH*0.28), 5);
     ctx.fillStyle = "#fb73fa";
     ctx.beginPath();
-    ctx.arc(-headW*0.28, -legL-torsoH-headH/2-2, headW*0.21, 0, 2*Math.PI);
+    ctx.arc(-headW*0.22, -legL-torsoH-headH/2-2, headW*0.17, 0, 2*Math.PI);
     ctx.fill();
     ctx.shadowColor = "#fff";
     ctx.fillStyle = "#fff";
     ctx.beginPath();
-    ctx.arc(headW*0.26, -legL-torsoH-headH/2-0.6, headW*0.16, 0, 2*Math.PI);
+    ctx.arc(headW*0.22, -legL-torsoH-headH/2-0.6, headW*0.13, 0, 2*Math.PI);
     ctx.fill();
     ctx.restore();
 
-    // -- Mouth
+    // -- MOUTH --
     ctx.save();
     ctx.shadowBlur = 0;
     ctx.strokeStyle = "#aa2c69";
-    ctx.lineWidth = Math.max(2, headW*0.10);
+    ctx.lineWidth = Math.max(2, headW*0.09);
     ctx.beginPath();
-    ctx.arc(0, -legL-torsoH-headH/2+headH*0.49, headW*0.29, Math.PI*0.22, Math.PI*0.75);
+    ctx.arc(0, -legL-torsoH-headH/2+headH*0.44, headW*0.22, Math.PI*0.18, Math.PI*0.82);
     ctx.stroke();
     ctx.restore();
 
-    // -- Visual debugging connections: feet/head centers
+    // Debugging anchors
     ctx.save();
-    ctx.globalAlpha = 0.48;
+    ctx.globalAlpha = 0.41;
     ctx.fillStyle = "#fb73fa";
     ctx.beginPath();
-    ctx.arc(-torsoW*0.32, 0, 2.8, 0, 2*Math.PI); // left foot
-    ctx.arc(torsoW*0.32, 0, 2.8, 0, 2*Math.PI);  // right foot
-    ctx.arc(0, -legL-torsoH-headH, 2.4, 0, 2*Math.PI); // top head
-    ctx.arc(0, -legL-torsoH/2, 2.3, 0, 2*Math.PI); // body center
+    ctx.arc(-torsoW*0.33, 0, 2.5, 0, 2*Math.PI);
+    ctx.arc(torsoW*0.33, 0, 2.5, 0, 2*Math.PI);
+    ctx.arc(0, -legL-torsoH-headH, 2.1, 0, 2*Math.PI);
+    ctx.arc(0, -legL-torsoH/2, 2.0, 0, 2*Math.PI);
     ctx.fill();
     ctx.restore();
 
-    // -- Rare emoji for personality
+    // Rare zombie emoji for personality
     if (tick && tick % 121 === 0) {
       ctx.save();
-      ctx.font = `${Math.round(headH * 1.15)}px Segoe UI Emoji, Apple Color Emoji`;
-      ctx.globalAlpha = 0.18;
-      ctx.fillText("🧟", 0, -legL-torsoH-headH/2+2);
+      ctx.font = `${Math.round(headH * 1.12)}px Segoe UI Emoji, Apple Color Emoji`;
+      ctx.globalAlpha = 0.16;
+      ctx.fillText("🧟", 0, -legL-torsoH-headH/2+3);
       ctx.restore();
     }
 
@@ -1010,8 +1007,10 @@ function drawEnemy(ctx, e, dims, tick) {
   ctx.restore();
 }
 
-// PUBLIC_INTERFACE
-// Health HUD: neon bar with label (bottom left, screen responsive)
+/**
+ * PUBLIC_INTERFACE
+ * Health HUD: neon bar with label (bottom left, screen responsive)
+ */
 function drawHealthMeter(ctx, p, width, height) {
   const HP = p.health !== undefined ? p.health : PLAYER_MAX_HEALTH;
   if (!HP || HP < 0) return;
