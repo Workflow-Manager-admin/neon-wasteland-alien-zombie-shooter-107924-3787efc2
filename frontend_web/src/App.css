@@ -1,3 +1,8 @@
+/* PRIMARY GAME & CANVAS CSS (globals.css removed for safety)
+   Key: All style rules for canvas and game overlays must be here alone!
+   Only this file controls .game-canvas-container, #game-canvas, overlay, root.
+   IF YOU SEE "invisible figures/text-only bug", check .game-canvas-container and #game-canvas here! */
+
 :root {
   --neon-primary: #39ff14;
   --neon-accent: #aa2c69;
