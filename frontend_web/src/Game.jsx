@@ -707,10 +707,19 @@ function drawBG(ctx, w, h) {
  * Order: legs, torso, arms, gun, head. All body parts always visible, above ground.
  */
 function drawPlayer(ctx, p, dims) {
-  // INSTRUMENTATION: Confirm function call and input values.
-  console.log("[INSTRUMENT][drawPlayer] Called with player", JSON.stringify({
-    x: p.x, y: p.y, w: p.w, h: p.h, dir: p.dir, health: p.health
-  }), "dims:", dims);
+  // INSTRUMENTATION (ENHANCED): Confirm drawPlayer call, input values, canvas context, and log final rect/emoji for debugging.
+  console.log(
+    "[INSTRUMENT][drawPlayer] Called",
+    JSON.stringify({
+      px: p.x, py: p.y, w: p.w, h: p.h, dir: p.dir, health: p.health,
+      canvas: { w: dims.width, h: dims.height }
+    }),
+    "timestamp:", Date.now()
+  );
+  if (!ctx) {
+    console.error("[drawPlayer] Context is null!");
+    return;
+  }
 
   ctx.save();
 
@@ -718,17 +727,27 @@ function drawPlayer(ctx, p, dims) {
   const groundY = dims.height - Math.max(48, dims.height * 0.06);
   ctx.translate(p.x, groundY);
 
-  // Draw a large highly-visible solid block and emoji centered at calculated position for debug
+  // DRAW: Massive outlined rectangle and emoji for guaranteed visibility!
   ctx.save();
+  ctx.globalAlpha = 1.0;
+  ctx.lineWidth = 12;
+  ctx.strokeStyle = "#FFD400";
+  ctx.strokeRect(-36, -92, 72, 82);
+
   ctx.globalAlpha = 0.81;
   ctx.fillStyle = "#FF0099";
-  ctx.fillRect(-36, -92, 72, 82); // very visible, always covers main player area
+  ctx.fillRect(-36, -92, 72, 82); // Unambiguously covers main player area
   ctx.font = "62px Segoe UI Emoji, Apple Color Emoji";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillStyle = "#fff";
   ctx.fillText("🧍", 0, -35); // obvious humanoid marker
   ctx.restore();
+
+  // ==== LOG coordinates and current transform stack state for rapid bug chasing
+  if (ctx.getTransform) try {
+    console.log("[INSTRUMENT][drawPlayer] Post-translate transform matrix:", ctx.getTransform());
+  } catch(e) {}
 
   // Character height scales responsively
   const idealCharH = Math.max(62, Math.min(dims.height * 0.18, 112));
@@ -761,10 +780,8 @@ function drawPlayer(ctx, p, dims) {
   ctx.lineWidth = armW + 2;
   ctx.lineCap = "round";
   ctx.beginPath();
-  // Left leg
   ctx.moveTo(-torsoW * 0.74, 0);
   ctx.lineTo(-torsoW * 0.74, legL);
-  // Right leg
   ctx.moveTo(torsoW * 0.74, 0);
   ctx.lineTo(torsoW * 0.74, legL * 0.93);
   ctx.stroke();
@@ -785,12 +802,10 @@ function drawPlayer(ctx, p, dims) {
   ctx.lineWidth = armW;
   ctx.lineCap = "round";
   ctx.strokeStyle = "#fff";
-  // Gun arm (along direction)
   ctx.beginPath();
   ctx.moveTo(-torsoW*1.07, -legL-torsoH*0.33);
   ctx.lineTo(dir*(torsoW*1.58), -legL-torsoH*0.65);
   ctx.stroke();
-  // Off arm
   ctx.beginPath();
   ctx.moveTo(torsoW*0.97, -legL-torsoH*0.17);
   ctx.lineTo(torsoW*1.34, -legL+torsoH*0.295);
@@ -812,7 +827,6 @@ function drawPlayer(ctx, p, dims) {
     dir*Math.max(gunH*0.9,7),
     gunH*0.38
   );
-  // Muzzle flash (if recently shot)
   if (p.cd > 130 && p.cd < 170) {
     ctx.save();
     ctx.globalAlpha = 0.83;
@@ -923,24 +937,35 @@ function drawBullet(ctx, b, dims) {
  * Handles proportionality and order: legs, torso, arms, head.
  */
 function drawEnemy(ctx, e, dims, tick) {
-  // INSTRUMENTATION: Log each enemy
-  console.log("[INSTRUMENT][drawEnemy] Called for", e.key, "entity at:", {
-    x: e.x, y: e.y, w: e.w, h: e.h, radius: e.radius, dead: e.dead
-  }, "dims:", dims, "tick:", tick);
+  // INSTRUMENTATION (EXPANDED): Log each enemy with extra diagnostic timestamp, check context and outline always.
+  console.log(
+    "[INSTRUMENT][drawEnemy] Called",
+    { key: e.key, at: { x: e.x, y: e.y }, w: e.w, h: e.h, r: e.radius, dead: e.dead, tick, canvas: { w: dims.width, h: dims.height } },
+    "timestamp:", Date.now()
+  );
+  if (!ctx) {
+    console.error("[drawEnemy] Context is null!", e);
+    return;
+  }
 
   ctx.save();
   ctx.globalAlpha = 0.98;
 
-  // Highly visible diagnostic DEBUG rectangle with emoji: always runs for all enemy keys for this diagnostic
+  // Diagnostic highly-visible outline and fill
   ctx.save();
+  ctx.globalAlpha = 1.0;
+  ctx.strokeStyle = (e.key === "zombie") ? "#F0D" : (e.key === "bot") ? "#2ecffd" : "#FFD600";
+  ctx.lineWidth = 11;
+  let bbX = e.x - (e.w ? e.w/2 : 22), bbY = e.y - (e.h ? e.h/2 : 32), bbW = e.w || 44, bbH = e.h || 44;
+  ctx.strokeRect(bbX-4, bbY-4, bbW+8, bbH+8);
+
   ctx.globalAlpha = 0.88;
   ctx.fillStyle = "#00F5FF"; // bright cyan block for zombies/bots
-  let bbX = e.x - (e.w ? e.w/2 : 22), bbY = e.y - (e.h ? e.h/2 : 32), bbW = e.w || 44, bbH = e.h || 44;
   ctx.fillRect(bbX, bbY, bbW, bbH);
-  ctx.font = "62px Segoe UI Emoji, Apple Color Emoji";
+  ctx.font = "64px Segoe UI Emoji, Apple Color Emoji";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillStyle = "#000";
+  ctx.fillStyle = "#222";
   // Use emoji based on type
   let emoji = (e.key === "zombie") ? "🧟" : (e.key === "bot") ? "🤖" : (e.key === "bird") ? "🐦" : "❓";
   ctx.fillText(emoji, e.x, e.y);
