@@ -530,12 +530,17 @@ class EndlessGameWorld {
     this.zombies = [];
     this.bullets = [];
     this.effects = [];
-    this.spawnTimer = 0;
+    // --- Zombie spawn variables for new logic ---
+    this.spawnTimer = 0; // for interval-based spawn, controls when to spawn next zombie
+    this.lastZombieSpawnTime = Date.now();
+    this._minZombieSpawnDelay = 600; // minimal milliseconds between spawns, will increase as health increases
+    this._baseZombieSpawnDelay = 1800; // base ms between spawns at lowest health
     this.maxZombies = 5;
     this._playerSpawn();
-    // Central, initial zombie spawning
+    // Start zombies: spawn both from left and right, scattered
     for (let i = 0; i < this.maxZombies - 1; ++i) {
-      this.zombies.push(this._spawnZombie());
+      // Alternate initial spawns between left and right for variety at game start
+      this.zombies.push(this._spawnZombie(undefined, undefined, i % 2 === 0 ? "left" : "right"));
     }
     this._updateHUD();
   }
@@ -624,10 +629,20 @@ class EndlessGameWorld {
     // Enemy zombie movement/collision
     for (let z of this.zombies) {
       if (!z.dead) {
-        z.x -= z.speed;
-        // Spawn out-of-view to right
-        if (z.x < this.scrollX - 140) {
-          Object.assign(z, this._spawnZombie(this.scrollX + this.width + 120 + Math.random() * 80, this._zombieHPByScore()));
+        // Move left or right according to their spawn direction/velocity (z.speed signed)
+        z.x += z.spawnDir === "left" ? Math.abs(z.speed) : -Math.abs(z.speed);
+        // Respawn if out of bounds (left or right)
+        if ((z.spawnDir === "left" && z.x > this.scrollX + this.width + 140) ||
+            (z.spawnDir === "right" && z.x < this.scrollX - 140)) {
+          // Spawn on random new side, update all zombie stats to current scaling
+          Object.assign(
+            z,
+            this._spawnZombie(
+              undefined,
+              this._zombieHPByScore(),
+              Math.random() < 0.5 ? "left" : "right"
+            )
+          );
         }
         // Collision with player triggers DEATH and sacrifice!
         if (this._collide(this.player, z)) {
@@ -649,11 +664,22 @@ class EndlessGameWorld {
       (e.type === "label" && e.t < 33)
     );
 
-    // Spawn logic: always keep current difficulty's max zombies in world
+    // ---- NEW SPAWN LOGIC ----
+    // Calculate desired min spawn interval based on zombie health (harder = spawn slower)
+    // High health = larger hpModifier = longer delay
+    const hp = this._zombieHPByScore();
+    const hpModifier = 1 + ((hp - 1) * 0.8); // more health means up to 80% longer interval per extra HP
+    const currentDelay = this._baseZombieSpawnDelay * hpModifier;
+    const elapsedSinceSpawn = Date.now() - this.lastZombieSpawnTime;
+    // Only spawn if below max zombies (alive, not dead)
     if (this.zombies.filter(z => !z.dead).length < this._maxZombieCount()) {
-      this.zombies.push(this._spawnZombie());
+      if (elapsedSinceSpawn >= currentDelay) {
+        // Spawn on either side randomly
+        this.zombies.push(this._spawnZombie(undefined, hp, Math.random() < 0.5 ? "left" : "right"));
+        this.lastZombieSpawnTime = Date.now();
+      }
     }
-
+    // Update HUD
     this._updateHUD();
   }
 
@@ -785,17 +811,42 @@ class EndlessGameWorld {
   }
 
   // Ensure only one method controls all zombie spawning/scaling
-  _spawnZombie(x, hpOverride) {
-    // Zombies scale in health and speed with increased score
+  /**
+   * Spawns a zombie at a side (left/right), with health and proper speed for entry.
+   * @param {number|undefined} x Optional x position override (otherwise calculated by side)
+   * @param {number|undefined} hpOverride Optional health override, otherwise calculated from score
+   * @param {'left'|'right'|undefined} side 'left' or 'right' to control spawn side; random if omitted
+   */
+  _spawnZombie(x, hpOverride, side) {
+    // Zombies scale in health and speed with increased score; entry speed starts slow
     const type = zombieTypes[0];
     // health grows with score
-    const hp = hpOverride || this._zombieHPByScore();
+    const hp = typeof hpOverride === "number" ? hpOverride : this._zombieHPByScore();
+    // Pick spawn side: left or right (default random)
+    let spawnDir = side;
+    if (!spawnDir) spawnDir = Math.random() < 0.5 ? "left" : "right";
+    // Entry X: if left, spawn just off left of view (or given x if specified); if right, spawn off right
+    let entryX;
+    if (typeof x === "number") {
+      entryX = x;
+    } else if (spawnDir === "left") {
+      entryX = this.scrollX - 120 - Math.random() * 80;
+    } else {
+      entryX = this.scrollX + this.width + 120 + Math.random() * 80;
+    }
+
+    // Entry/movement speed: base is intentionally slow, scaling up with score for difficulty
+    // Start at 0.65, never exceeding type.speed + 1.0; still some random for variety
+    const baseSpeed = 0.65 + Math.min(this.score / 3500, 1.0) + Math.random() * 0.26;
+    // If spawned from left, speed is positive rightward. If spawned from right, speed is negative (leftward).
+    const speed = baseSpeed * (spawnDir === "left" ? 1 : -1);
+
     return {
-      x: typeof x === 'number' ? x : this.width + Math.random() * 130 + 60,
+      x: entryX,
       y: this.groundY - type.h + 8,
       w: type.w,
       h: type.h,
-      speed: type.speed + Math.min(this.score / 2000, 1.2) + Math.random() * 0.4,
+      speed: speed,
       dead: false,
       _falling: false,
       type: type.name,
@@ -807,7 +858,8 @@ class EndlessGameWorld {
       label: type.label,
       labelColor: type.labelColor,
       hp,
-      maxhp: hp
+      maxhp: hp,
+      spawnDir, // Record spawn direction for proper movement/respawn logic
     };
   }
 
