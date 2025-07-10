@@ -402,7 +402,19 @@ function App() {
   };
 
   // HUD for endless mode: only score, coins, kills
+  // HUD should be fully hidden when the game is over or in a full overlay
   const HUD = () => {
+    // Don't display while in the 'over' (game over) state
+    // or if sacrifice overlay is transitioning with show/active
+    if (
+      gameState === 'over' ||
+      (gameState === 'sacrifice' && (!activeSacrifice.show && activeSacrifice.count === 0))
+    ) {
+      // Hide HUD completely in game over or post sacrifice
+      return null;
+    }
+
+    // During sacrifice overlay, display live-updating stats
     let displayZombiesSacrificed =
       activeSacrifice.show && activeSacrifice.count > 0
         ? zombiesSacrificed + activeSacrifice.liveZombiesSacrificed
@@ -444,6 +456,8 @@ function App() {
   };
 
   function NeonControls() {
+    // Controls are also hidden in full game over
+    if (gameState === 'over') return null;
     return (
       <div className={"btn-panel" + (mobile ? " btn-panel-mobile" : "")}>
         <button
@@ -501,7 +515,10 @@ function App() {
         <Overlay />
       </div>
       <NeonControls />
-      <footer className="footer-note">2024 &copy; Neon Wasteland Alien Zombie Shooter</footer>
+      {/* Hide footer when in Game Over for a more focused overlay */}
+      {(gameState !== 'over') && (
+        <footer className="footer-note">2024 &copy; Neon Wasteland Alien Zombie Shooter</footer>
+      )}
     </div>
   );
 }
