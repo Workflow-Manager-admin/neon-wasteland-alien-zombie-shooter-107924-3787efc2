@@ -64,8 +64,6 @@ html, body, #root, .neon-app-root {
   display: flex; align-items: center;
 }
 .hud-label.coins { color: var(--neon-accent);}
-/* .hud-label.ammo { color: #fff;} */
-/* .ammo-icon removed: infinite ammo, no display */
 .zombie-icon, .coin-icon {
   display: inline-block;
   vertical-align: middle;
@@ -84,7 +82,6 @@ html, body, #root, .neon-app-root {
   box-shadow: 0 0 8px #f3f14b77;
   border: 1.5px solid #7d6c28;
 }
-/* .ammo-icon styles removed for infinite ammo */
 
 .juice-meter-bg {
   width: 120px; height: 18px;
@@ -144,11 +141,22 @@ canvas#game-canvas {
   color: var(--neon-primary);
   text-shadow: 0 0 7px var(--neon-primary), 0 0 2px black;
   animation: fade-in 0.6s;
-  /* pointer-events: none; -- Remove this to allow descendants normal pointer events */
 }
 .game-overlay > * {
   pointer-events: auto;
+  background: #0e0e1a;
+  padding: 3rem 4rem;
+  border-radius: 16px;
+  box-shadow: 0 0 30px #39ff1490;
+  min-width: 65vw;
+  min-height: 45vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.4rem;
 }
+
 @keyframes fade-in {
   from { opacity: 0;}
   to { opacity: 1;}
@@ -298,3 +306,5 @@ button.neon-btn:focus {
 
 ::-webkit-scrollbar { width:7px; background: #242435;}
 ::-webkit-scrollbar-thumb { background: #39ff1422;}
+
+

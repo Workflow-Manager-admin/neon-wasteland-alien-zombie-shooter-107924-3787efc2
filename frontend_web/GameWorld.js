@@ -1,4 +1,6 @@
 import React, { useRef, useEffect, useState } from "react";
+import { supabase } from "./supabaseClient";
+
 
 /**
  * PUBLIC_INTERFACE
