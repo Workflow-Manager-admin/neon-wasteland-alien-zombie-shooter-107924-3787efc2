@@ -14,7 +14,7 @@ const THEME = {
 
 /**
  * The only zombie type: green zombie.
- * All gameplay, UI, and coin logic is now tied to this type.
+ * All gameplay, UI, and coin logic is tied to this type.
  */
 const zombieTypes = [
   {
@@ -47,95 +47,38 @@ const useAnimationFrame = (callback, isRunning = true) => {
   });
 };
 
-/**
- * PUBLIC_INTERFACE
- */
+// PUBLIC_INTERFACE
 function App() {
-  // Game state hooks
-  const [gameState, setGameState] = useState('menu'); // menu | running | paused | over | complete
+  // ================= GAME STATE HOOKS FOR ENDLESS SCORE-BASED MODE ===================
+  const [gameState, setGameState] = useState('menu'); // menu | running | sacrifice | over
   const [hud, setHud] = useState({
-    score: 0, coins: 0, level: 1, zombies: 0,
+    score: 0, coins: 0, kills: 0,
   });
-
-  // Tracks how many zombies have ever been sacrificed in this session.
+  // Tracks how many zombies ever sacrificed
   const [zombiesSacrificed, setZombiesSacrificed] = useState(0);
-
-  // Dedicated tracking of zombies killed in the last round
-  const [zombiesKilledThisRound, setZombiesKilledThisRound] = useState(0);
-
-  // Track "live" sacrifice process (shows running tally as zombies drop)
+  // Tracks zombies killed in the current run (awarded on death)
+  const [zombiesKilledThisRun, setZombiesKilledThisRun] = useState(0);
+  // Sacrifice overlay state
   const [activeSacrifice, setActiveSacrifice] = useState({
     show: false,
-    count: 0, // how many zombies to sacrifice
-    coins: 0, // starting coins at sacrifice
+    count: 0,
+    coins: 0,
     coinValue: 2,
     liveZombiesSacrificed: 0,
-    liveCoinsEarned: 0, // For live "+N" update
-    floats: [], // Array of floating "+N"
+    liveCoinsEarned: 0,
+    floats: [],
   });
-
-  // For control state and canvas focus
+  // Mobile/responsive controls
   const [control, setControl] = useState({ left: false, right: false, shoot: false, jump: false });
   const [mobile, setMobile] = useState(false);
 
-  // Internal refs for main game objects
+  // Main canvas and game world refs
   const canvasRef = useRef();
   const world = useRef(null);
-
-  // Overlay lock refs must ALWAYS be created at the top level (not in conditional or render logic)
+  // For overlay process locking
   const overlayActiveRef = useRef(false);
-  const noZombiesRef = useRef(false);
 
-  // See if a round just finished to start portal-sacrifice
-  useEffect(() => {
-    if (gameState === 'complete') {
-      // On round complete, start the portal-sacrifice if zombies were killed
-      setActiveSacrifice({
-        show: true,
-        count: zombiesKilledThisRound,
-        coins: hud.coins,
-        coinValue: 2,
-        liveZombiesSacrificed: 0,
-        liveCoinsEarned: 0,
-        floats: [],
-      });
-    } else if (gameState !== 'complete') {
-      // Hide sacrifice, always reset all live counts/state
-      setActiveSacrifice({
-        show: false,
-        count: 0,
-        coins: hud.coins,
-        coinValue: 2,
-        liveZombiesSacrificed: 0,
-        liveCoinsEarned: 0,
-        floats: [],
-      });
-    }
-  // eslint-disable-next-line
-  }, [gameState]);
-
-  // Each HUD update (from GameWorld), track zombies killed independently
-  useEffect(() => {
-    if (gameState === 'running' || gameState === 'over' || gameState === 'complete') {
-      setZombiesKilledThisRound(hud.zombies || 0);
-    } else if (gameState === 'menu') {
-      setZombiesKilledThisRound(0);
-    }
-  }, [hud.zombies, gameState]);
-
-  // Remove floats after animation end (1.12s)
-  useEffect(() => {
-    if (activeSacrifice.floats.length > 0) {
-      const timer = setTimeout(() => {
-        setActiveSacrifice(prev =>
-          ({ ...prev, floats: prev.floats.length ? prev.floats.slice(1) : [] })
-        );
-      }, 1060);
-      return () => clearTimeout(timer);
-    }
-  }, [activeSacrifice.floats]);
-
-  // Detect mobile
+  // Responsive mobile detection
   useEffect(() => {
     setMobile(window.innerWidth < 900);
     const onResize = () => setMobile(window.innerWidth < 900);
@@ -143,50 +86,64 @@ function App() {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  // Start or reset the game
+  // Start/reset game with endless score-based logic
   const startGame = () => {
-    world.current = new GameWorld(THEME, () => {
-      // On HUD update: called from world
-      if (world.current && typeof world.current.getHUD === "function") {
-        const s = world.current.getHUD();
-        setHud(s);
-      }
+    world.current = new EndlessGameWorld(THEME, (hudObj) => {
+      setHud(hudObj);
+      setZombiesKilledThisRun(hudObj.kills || 0);
     }, () => {
-      // On game over
-      setGameState('over');
-    }, () => {
-      // On level complete
-      setGameState('complete');
+      // On death
+      setGameState('sacrifice');
+      setActiveSacrifice((prev) => ({
+        ...prev,
+        show: true,
+        count: zombiesKilledThisRun,
+        coins: hud.coins,
+        coinValue: 2,
+        liveZombiesSacrificed: 0,
+        liveCoinsEarned: 0,
+        floats: []
+      }));
+    });
+    setActiveSacrifice({
+      show: false,
+      count: 0,
+      coins: 0,
+      coinValue: 2,
+      liveZombiesSacrificed: 0,
+      liveCoinsEarned: 0,
+      floats: []
     });
     setGameState('running');
     setControl({ left: false, right: false, shoot: false, jump: false });
+    setZombiesKilledThisRun(0);
   };
 
-  // Game loop
+  // Endless game loop
   useAnimationFrame((ts) => {
-    // Only update/draw world if NOT complete (i.e. no overlay/sacrifice is active)
     if (
       gameState === 'running' &&
       canvasRef.current &&
-      world.current &&
-      !(activeSacrifice.show && gameState === 'complete')
+      world.current
     ) {
       world.current.update(control);
       world.current.draw(canvasRef.current);
     }
-    // If frozen for sacrifice overlay, lock world state (draw once only)
+    // Draw final state for sacrifice overlay
     if (
-      (gameState === 'complete' && activeSacrifice.show && world.current && canvasRef.current)
+      (gameState === 'sacrifice' && activeSacrifice.show && world.current && canvasRef.current)
     ) {
       world.current.draw(canvasRef.current);
     }
-  }, gameState === 'running' || (gameState === 'complete' && activeSacrifice.show));
+  }, gameState === 'running' || (gameState === 'sacrifice' && activeSacrifice.show));
 
-  // Controls: keyboard
+  // Keyboard controls (lock if overlay)
   useEffect(() => {
     const keydown = (e) => {
-      // Block all player input when portal sacrifice overlay is active
-      if (gameState !== 'running' || (activeSacrifice.show && gameState === 'complete')) return;
+      if (
+        (gameState !== 'running') ||
+        (activeSacrifice.show && gameState === 'sacrifice')
+      ) return;
       if (["ArrowLeft", "a", "A"].includes(e.key)) setControl(s => ({ ...s, left: true }));
       if (["ArrowRight", "d", "D"].includes(e.key)) setControl(s => ({ ...s, right: true }));
       if (["ArrowUp"].includes(e.key) && !e.repeat) setControl(s => ({ ...s, jump: true }));
@@ -206,18 +163,18 @@ function App() {
     };
   }, [gameState, activeSacrifice.show]);
 
-  // Mobile: onscreen control handler
+  // On-screen control handler for mobile
   const handleTouch = (type, enable) => {
-    if (activeSacrifice.show && gameState === 'complete') return; // no input during overlay
+    if (activeSacrifice.show && gameState === 'sacrifice') return;
     if (type === 'left') setControl(s => ({ ...s, left: enable }));
     if (type === 'right') setControl(s => ({ ...s, right: enable }));
     if (type === 'shoot') setControl(s => ({ ...s, shoot: enable }));
     if (type === 'jump') setControl(s => ({ ...s, jump: enable }));
   };
 
-  // Button click (shoot or jump for mobile)
+  // Mobile tap: shoot/jump
   const handleButtonClick = (type) => {
-    if (activeSacrifice.show && gameState === 'complete') return; // block all input during portal overlay
+    if (activeSacrifice.show && gameState === 'sacrifice') return;
     if (type === 'shoot') {
       setControl(s => ({ ...s, shoot: true }));
       setTimeout(() => setControl(s => ({ ...s, shoot: false })), 80);
@@ -228,13 +185,25 @@ function App() {
     }
   };
 
-  // Render overlay screens
+  // Floating "+N" label remover for sacrifice overlay
+  useEffect(() => {
+    if (activeSacrifice.floats.length > 0) {
+      const timer = setTimeout(() => {
+        setActiveSacrifice(prev =>
+          ({ ...prev, floats: prev.floats.length ? prev.floats.slice(1) : [] })
+        );
+      }, 1060);
+      return () => clearTimeout(timer);
+    }
+  }, [activeSacrifice.floats]);
+
+  // --- Overlay renderer ---
   const Overlay = () => {
     if (gameState === 'menu') {
       return (
         <div className="game-overlay">
           <h1 className="neon-title">NEON WASTELAND <span className="accent-text">ZOMBIE SHOOTER</span></h1>
-          <p className="subtitle neon-text">Side-scroll, shoot, and survive the apocalypse!</p>
+          <p className="subtitle neon-text">Side-scroll, shoot, and survive the apocalypse!<br />Endless run: No levels. Kill zombies, gain coins, survive as long as you can.</p>
           <button className="neon-btn" onClick={startGame} autoFocus>Start Game</button>
           <div className="howto-container">
             <p>Move: <kbd>←</kbd> / <kbd>→</kbd> or <kbd>A</kbd>/<kbd>D</kbd></p>
@@ -245,10 +214,9 @@ function App() {
         </div>
       );
     }
-
-    // Next: Portal Sacrifice overlay - only show if zombies were killed and we're in "sacrifice" mode
-    if (activeSacrifice.show && gameState === 'complete' && activeSacrifice.count > 0) {
-      // Each drop fires as zombie enters portal (triggers "+2" float & live counter)
+    // Sacrifice overlay - only if kills > 0
+    if (activeSacrifice.show && gameState === 'sacrifice' && activeSacrifice.count > 0) {
+      // Each drop fires as zombie enters portal
       const onSacrificeDrop = (zNum) => {
         setActiveSacrifice(prev => ({
           ...prev,
@@ -258,7 +226,7 @@ function App() {
         }));
       };
 
-      // Allow reward payout and round reset only ONCE per overlay instance
+      // Only allow reward + round reset once per overlay
       const onSacrificeComplete = (totalCoins) => {
         if (overlayActiveRef.current) return;
         overlayActiveRef.current = true;
@@ -267,7 +235,7 @@ function App() {
         setHud(hudPrev => ({
           ...hudPrev,
           coins: hudPrev.coins + totalCoins,
-          zombies: 0,
+          kills: 0,
         }));
         setActiveSacrifice(prev => ({
           ...prev,
@@ -278,7 +246,7 @@ function App() {
           floats: [],
         }));
         setTimeout(() => {
-          setZombiesKilledThisRound(0);
+          setZombiesKilledThisRun(0);
           overlayActiveRef.current = false;
           startGame();
         }, 1280);
@@ -296,7 +264,7 @@ function App() {
             onSacrificeDrop={onSacrificeDrop}
             onSacrificeComplete={onSacrificeComplete}
           />
-          <div className="big-score neon-text" style={{marginTop:'1em'}}>
+          <div className="big-score neon-text" style={{ marginTop: '1em' }}>
             Zombies Sacrificed: {zombiesSacrificed + liveZombiesSacrificed}
           </div>
           <div className="coins neon-glow">Coins: <span>{liveCoins}</span></div>
@@ -327,31 +295,25 @@ function App() {
                   border: "2px solid #7d6c28",
                   marginLeft: 3,
                   verticalAlign: "middle",
-                }}/>
+                }} />
               </div>
             )}
           </div>
         </div>
       );
     }
-
-    // If round ends and no zombies were killed, show brief overlay and robustly lock input until round transitions.
-    if (gameState === 'complete' && (!activeSacrifice.count || zombiesKilledThisRound === 0)) {
-      if (!noZombiesRef.current) {
-        noZombiesRef.current = true;
-        setTimeout(() => {
-          setZombiesKilledThisRound(0);
-          noZombiesRef.current = false;
-          startGame();
-        }, 700);
-      }
+    // If player dies but there are no kills this run, skip overlay ~700ms
+    if (gameState === 'sacrifice' && (!activeSacrifice.count || zombiesKilledThisRun === 0)) {
+      setTimeout(() => {
+        setZombiesKilledThisRun(0);
+        startGame();
+      }, 700);
       return (
         <div className="game-overlay neon-text">
           No zombies to sacrifice!
         </div>
       );
     }
-
     if (gameState === 'over') {
       return (
         <div className="game-overlay">
@@ -366,42 +328,40 @@ function App() {
     return null;
   };
 
-  // HUD component
+  // HUD for endless mode: only score, coins, kills
   const HUD = () => {
     let displayZombiesSacrificed =
       activeSacrifice.show && activeSacrifice.count > 0
-        ? zombiesSacrificed
+        ? zombiesSacrificed + activeSacrifice.liveZombiesSacrificed
         : zombiesSacrificed;
-    if (activeSacrifice.show && activeSacrifice.count > 0) {
-      displayZombiesSacrificed = zombiesSacrificed + activeSacrifice.liveZombiesSacrificed;
-    }
-    // Always show latest HUD/zombie-killed state for juiced count, never 0 during sacrifice
-    const zombiesDisplay =
+    // Always show count during sacrifice overlay
+    const killsDisplay =
       (activeSacrifice.show && activeSacrifice.count > 0)
-        ? zombiesKilledThisRound
-        : hud.zombies;
+        ? zombiesKilledThisRun
+        : hud.kills;
 
     return (
       <div className="hud-container">
         <div className="hud-left">
           <div className="hud-label">
-            <span className="zombie-icon"/> x {zombiesDisplay} / {world.current?.zombiesToJuice ?? 6}
+            <span className="zombie-icon" /> Kills: {killsDisplay}
           </div>
         </div>
         <div className="hud-center">
-          <div className="hud-title">LEVEL {hud.level}</div>
+          <div className="hud-title">SCORE: {hud.score}</div>
         </div>
         <div className="hud-right" style={{ flexDirection: "column", alignItems: "flex-end" }}>
-          <div className="hud-label coins"><span className="coin-icon"/> {
-            activeSacrifice.show ? activeSacrifice.coins + activeSacrifice.liveCoinsEarned : hud.coins
-          }</div>
+          <div className="hud-label coins">
+            <span className="coin-icon" />
+            {activeSacrifice.show ? activeSacrifice.coins + activeSacrifice.liveCoinsEarned : hud.coins}
+          </div>
           <p style={{
-              margin: "2px 0 0 0",
-              color: THEME.primary,
-              fontWeight: 600,
-              fontSize: "0.95em",
-              textShadow: "0 0 5px #39ff14c7",
-              letterSpacing: ".01em"
+            margin: "2px 0 0 0",
+            color: THEME.primary,
+            fontWeight: 600,
+            fontSize: "0.95em",
+            textShadow: "0 0 5px #39ff14c7",
+            letterSpacing: ".01em"
           }}>
             Zombies Sacrificed: {displayZombiesSacrificed}
           </p>
@@ -409,8 +369,6 @@ function App() {
       </div>
     );
   };
-
-  // JuiceMeter has been removed for Portal Sacrifice system
 
   function NeonControls() {
     return (
@@ -475,29 +433,19 @@ function App() {
   );
 }
 
-// -- GAME CODE BELOW (pure JS/HTML/CSS shapes)
-class GameWorld {
-  /**
-   * GameWorld manages the main gameplay, player and enemy logic.
-   * Now includes jump state: playerY, velocityY, gravity, isJumping.
-   */
-  constructor(theme, onHUD, onGameOver, onLevelComplete) {
+// PUBLIC_INTERFACE - Central endless-game world. Single spawn logic, score/coin/kill-only state.
+class EndlessGameWorld {
+  constructor(theme, onHUD, onDeath) {
     this.theme = theme;
     this.onHUD = onHUD;
-    this.onGameOver = onGameOver;
-    this.onLevelComplete = onLevelComplete;
+    this.onDeath = onDeath;
     this.width = theme.canvasWidth;
     this.height = theme.canvasHeight;
     this.groundY = this.height - 120;
-
-    this.playerGroundY = this.groundY-48;
+    this.playerGroundY = this.groundY - 48;
     this.playerGravity = 1.6;
     this.playerJumpStrength = 22.5;
-    this.playerVelocityY = 0;
-    this.playerIsJumping = false;
-
     this.state = 'running';
-    this.level = 1;
     this.reset();
   }
 
@@ -505,45 +453,23 @@ class GameWorld {
     this.scrollX = 0;
     this.score = 0;
     this.coins = 0;
+    this.kills = 0;
     this.zombies = [];
     this.bullets = [];
     this.effects = [];
-    this.spawnCooldown = 0;
-    this.zombiesJuiced = 0;
-    this.zombiesToJuice = 6 + this.level * 2;
-
-    this.player = {
-      x: 100,
-      y: this.playerGroundY,
-      width: 32,
-      height: 56,
-      speed: 6,
-      dir: 1,
-      alive: true,
-      action: 'idle',
-      shootCooldown: 0,
-      velocityY: 0,
-      isJumping: false,
-    };
-    this.playerVelocityY = 0;
-    this.playerIsJumping = false;
-
-    // spawn initial zombies (all green zombies)
-    for (let i = 0; i < this.zombiesToJuice; ++i) {
-      this.zombies.push(this._spawnZombie(400+i*90+Math.random()*90));
+    this.spawnTimer = 0;
+    this.maxZombies = 5;
+    this._playerSpawn();
+    // Central, initial zombie spawning
+    for (let i = 0; i < this.maxZombies - 1; ++i) {
+      this.zombies.push(this._spawnZombie());
     }
-    this.gameOver = false;
-    this.levelComplete = false;
-    this.uiJuiceFlash = false;
-    this.onHUD && this.onHUD(this.getHUD());
+    this._updateHUD();
   }
 
-  // PUBLIC_INTERFACE
   update(control) {
-    // Prevent all updates once level completed (freeze world).
-    if (this.gameOver || this.levelComplete) return;
-
-    // Player LEFT/RIGHT
+    if (this.state !== 'running') return;
+    // Player controls/movement
     let dx = 0;
     if (control.left) dx -= this.player.speed;
     if (control.right) dx += this.player.speed;
@@ -553,8 +479,7 @@ class GameWorld {
     if (this.player.x - this.scrollX > this.width * 0.4)
       this.scrollX = this.player.x - this.width * 0.4;
     if (this.scrollX < 0) this.scrollX = 0;
-
-    // Jumping mechanics
+    // Jumping
     let onGround = (Math.abs(this.player.y - this.playerGroundY) < 1);
     if (control.jump && onGround && !this.player.isJumping) {
       this.player.velocityY = -this.playerJumpStrength;
@@ -573,111 +498,105 @@ class GameWorld {
       this.player.isJumping = false;
       this.player.y = this.playerGroundY;
     }
-
-    // Shooting
+    // Shooting (single-shot, no ammo)
     if (control.shoot && this.player.shootCooldown <= 0) {
       this._shoot();
       this.player.shootCooldown = 16;
-      this.effects.push({type:'muzzle', x:this.player.x+this.player.dir*30, y:this.player.y+32, t:0});
+      this.effects.push({ type: 'muzzle', x: this.player.x + this.player.dir * 30, y: this.player.y + 32, t: 0 });
     }
     if (this.player.shootCooldown > 0) this.player.shootCooldown -= 1;
 
-    // Bullets logic (awards coins and shows floating label, only green zombie effect now)
-    this.bullets.forEach((b,i,arr) => {
+    // Bullets and hit logic
+    this.bullets.forEach((b, i, arr) => {
       b.x += b.vx;
-      // Collide with zombies
       for (let z of this.zombies) {
-        if (!z.dead && z.x < b.x && b.x < z.x+z.w && z.y < b.y && b.y < z.y+z.h) {
-          z.dead = true;
-          z._diedAt = Date.now();
-          z._killedBy = 'bullet';
-          this.zombiesJuiced += 1;
-          this.coins += z.coins; // always +2
-          this.score += 100;
+        if (!z.dead && z.x < b.x && b.x < z.x + z.w && z.y < b.y && b.y < z.y + z.h) {
+          z.hp -= 1;
+          if (z.hp <= 0) {
+            z.dead = true;
+            z._diedAt = Date.now();
+            this.kills += 1;
+            this.coins += z.coins;
+            this.score += 100;
+            this.effects.push({
+              type: 'label',
+              x: z.x + z.w / 2,
+              y: z.y - 13,
+              t: 0,
+              text: "+2",
+              fill: "#39ff14",
+              outline: "#1a1a1a",
+            });
+            this.effects.push({ type: 'juice', x: z.x + z.w / 2, y: z.y + z.h / 2, t: 0 });
+          }
           arr[i]._hit = true;
-          // Floating coin/score label (always "+2" in neon green)
-          this.effects.push({
-            type: 'label',
-            x: z.x + z.w/2,
-            y: z.y - 13,
-            t: 0,
-            text: "+2",
-            fill: "#39ff14",
-            outline: "#1a1a1a",
-          });
-          // Juicing visual effect
-          this.effects.push({type:'juice', x:z.x+z.w/2, y:z.y+z.h/2, t:0});
         }
       }
     });
-    this.bullets = this.bullets.filter(b => b.x>this.scrollX-60 && b.x<this.scrollX+this.width+60 && !b._hit);
+    this.bullets = this.bullets.filter(b => b.x > this.scrollX - 60 && b.x < this.scrollX + this.width + 60 && !b._hit);
 
-    // Remove dead zombies, staggered fall
+    // Remove dead zombies (fall away visually)
     for (let z of this.zombies) {
       if (z.dead && !z._falling) {
         z._falling = true;
-        z._vy = 2+Math.random()*3;
+        z._vy = 2 + Math.random() * 3;
       }
       if (z._falling) {
         z.y += z._vy;
         z._vy += 0.5;
       }
     }
-    this.zombies = this.zombies.filter(z => !z._falling || z.y < this.groundY+90);
+    this.zombies = this.zombies.filter(z => !z._falling || z.y < this.groundY + 90);
 
-    // Enemy zombies: AI walk left
+    // Enemy zombie movement/collision
     for (let z of this.zombies) {
       if (!z.dead) {
         z.x -= z.speed;
-        // Respawn if out of view to right
-        if (z.x < this.scrollX-140) {
-          Object.assign(z, this._spawnZombie(this.scrollX + this.width + 120 + Math.random()*80));
+        // Spawn out-of-view to right
+        if (z.x < this.scrollX - 140) {
+          Object.assign(z, this._spawnZombie(this.scrollX + this.width + 120 + Math.random() * 80, this._zombieHPByScore()));
         }
-        // Collide with player
-        if (!z.dead && this._collide(this.player, z)) {
-          this.gameOver = true;
-          this.onGameOver && this.onGameOver();
+        // Collision with player triggers DEATH and sacrifice!
+        if (this._collide(this.player, z)) {
+          this.state = 'sacrifice';
+          this.onDeath && this.onDeath();
+          return;
         }
       }
     }
 
-    // Particle and effect updates: include 'label' for floating reward
+    // Particle/labels/effects updates
     for (let e of this.effects) {
       e.t += 1;
     }
     this.effects = this.effects.filter(e =>
-      (e.type==="muzzle" && e.t<12) ||
-      (e.type==="juice" && e.t<30) ||
-      (e.type==="ammo" && e.t<500) ||
-      (e.type==="label" && e.t<33)
+      (e.type === "muzzle" && e.t < 12) ||
+      (e.type === "juice" && e.t < 30) ||
+      (e.type === "ammo" && e.t < 500) ||
+      (e.type === "label" && e.t < 33)
     );
 
-    // Level complete state
-    if (this.zombiesJuiced >= this.zombiesToJuice) {
-      this.levelComplete = true;
-      setTimeout(() => {
-        this.onLevelComplete && this.onLevelComplete();
-      }, 2200);
-      return;
+    // Spawn logic: always keep current difficulty's max zombies in world
+    if (this.zombies.filter(z => !z.dead).length < this._maxZombieCount()) {
+      this.zombies.push(this._spawnZombie());
     }
-    this.onHUD && this.onHUD(this.getHUD());
+
+    this._updateHUD();
   }
 
-  // PUBLIC_INTERFACE
   draw(canvas) {
     const ctx = canvas.getContext('2d');
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-    // BG
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     this._drawBG(ctx);
 
     ctx.save();
-    ctx.translate(-this.scrollX,0);
+    ctx.translate(-this.scrollX, 0);
 
     // Ground
     ctx.save();
     ctx.beginPath();
     ctx.rect(0, this.groundY, 5000, 120);
-    var grd = ctx.createLinearGradient(0, this.groundY, 0, this.groundY+120);
+    var grd = ctx.createLinearGradient(0, this.groundY, 0, this.groundY + 120);
     grd.addColorStop(0, "#202026");
     grd.addColorStop(0.5, "#1a1a1a");
     grd.addColorStop(1, "#1e2323");
@@ -687,26 +606,26 @@ class GameWorld {
     ctx.fill();
     ctx.restore();
 
-    // Neon toxic glow layers, animated
-    let toxicNoise = Math.sin(Date.now()/470)*9;
-    for (let s=1; s<=2; ++s) {
+    // Neon toxic ground
+    let toxicNoise = Math.sin(Date.now() / 470) * 9;
+    for (let s = 1; s <= 2; ++s) {
       ctx.save();
       ctx.beginPath();
-      ctx.arc(this.scrollX+this.width/1.9, this.groundY+70+toxicNoise*s, 400+70*s, Math.PI, Math.PI*2, false);
-      ctx.lineWidth = 2+s;
-      ctx.strokeStyle = s%2===0? "#39ff142d":"#39ff1477";
+      ctx.arc(this.scrollX + this.width / 1.9, this.groundY + 70 + toxicNoise * s, 400 + 70 * s, Math.PI, Math.PI * 2, false);
+      ctx.lineWidth = 2 + s;
+      ctx.strokeStyle = s % 2 === 0 ? "#39ff142d" : "#39ff1477";
       ctx.shadowColor = "#39ff14aa";
-      ctx.shadowBlur = 24+s*4;
+      ctx.shadowBlur = 24 + s * 4;
       ctx.stroke();
       ctx.restore();
     }
 
-    // --- Draw zombies
+    // Draw zombies
     for (let z of this.zombies) {
       this._drawZombie(ctx, z);
     }
 
-    // Draw player (on top of zombies)
+    // Draw player
     this._drawPlayer(ctx, this.player);
 
     // Bullets
@@ -722,13 +641,13 @@ class GameWorld {
       ctx.restore();
     }
 
-    // Particle/effects, including labels for coin/score (above zombie position)
+    // Particle/effects & labels
     for (let e of this.effects) {
       if (e.type === 'muzzle') {
         ctx.save();
-        ctx.globalAlpha = 1-e.t/16;
+        ctx.globalAlpha = 1 - e.t / 16;
         ctx.beginPath();
-        ctx.arc(e.x, e.y, 16-e.t, 0, Math.PI*2);
+        ctx.arc(e.x, e.y, 16 - e.t, 0, Math.PI * 2);
         ctx.fillStyle = "#fff2";
         ctx.shadowColor = "#fff";
         ctx.shadowBlur = 10;
@@ -737,9 +656,9 @@ class GameWorld {
       }
       if (e.type === 'juice') {
         ctx.save();
-        ctx.globalAlpha = 1-e.t/28;
+        ctx.globalAlpha = 1 - e.t / 28;
         ctx.beginPath();
-        ctx.arc(e.x, e.y, 22+e.t*2, 0, Math.PI*2);
+        ctx.arc(e.x, e.y, 22 + e.t * 2, 0, Math.PI * 2);
         ctx.fillStyle = this.theme.primary;
         ctx.shadowColor = "#39ff14cc";
         ctx.shadowBlur = 35;
@@ -749,78 +668,61 @@ class GameWorld {
       if (e.type === 'label') {
         ctx.save();
         ctx.font = 'bold 22px Segoe UI, Arial, sans-serif';
-        let alpha = Math.max(0, 1 - e.t/32 - 0.21);
+        let alpha = Math.max(0, 1 - e.t / 32 - 0.21);
         ctx.globalAlpha = alpha;
         // Animate upward float
-        let yFloat = e.y - e.t*1.5 - 26*Math.max(0.3,alpha);
-        // Shadow
+        let yFloat = e.y - e.t * 1.5 - 26 * Math.max(0.3, alpha);
         ctx.lineWidth = 4;
-        ctx.strokeStyle = e.outline||'#181718';
-        ctx.strokeText(e.text, e.x-13, yFloat);
-        // Neon-like
+        ctx.strokeStyle = e.outline || '#181718';
+        ctx.strokeText(e.text, e.x - 13, yFloat);
         ctx.lineWidth = 1.2;
         ctx.strokeStyle = "#fff3";
-        ctx.strokeText(e.text, e.x-13, yFloat-1);
-        // Fill
+        ctx.strokeText(e.text, e.x - 13, yFloat - 1);
         ctx.fillStyle = e.fill;
-        ctx.fillText(e.text, e.x-13, yFloat);
-        ctx.restore();
-      }
-      if (e.type === 'ammo') {
-        ctx.save();
-        ctx.globalAlpha = Math.abs(Math.sin(e.t/10));
-        ctx.beginPath();
-        ctx.rect(e.x-12, e.y-18, 24, 36);
-        ctx.fillStyle = "#FFF";
-        ctx.shadowColor = "#aa2c69";
-        ctx.shadowBlur = 12;
-        ctx.fill();
-        ctx.restore();
-        ctx.save();
-        ctx.beginPath();
-        ctx.rect(e.x-7, e.y-12, 14, 24);
-        ctx.fillStyle = this.theme.accent;
-        ctx.globalAlpha = 0.7;
-        ctx.shadowColor = this.theme.primary;
-        ctx.shadowBlur = 12;
-        ctx.fill();
+        ctx.fillText(e.text, e.x - 13, yFloat);
         ctx.restore();
       }
     }
-
     ctx.restore();
   }
 
-  // API: get HUD state (zombies juiced; coins, etc)
-  getHUD() {
-    return {
-      level: this.level,
-      score: this.score,
-      coins: this.coins,
-      zombies: this.zombiesJuiced,
+  _playerSpawn() {
+    this.player = {
+      x: 100,
+      y: this.playerGroundY,
+      width: 32,
+      height: 56,
+      speed: 6,
+      dir: 1,
+      alive: true,
+      shootCooldown: 0,
+      velocityY: 0,
+      isJumping: false,
     };
+    this.playerVelocityY = 0;
+    this.playerIsJumping = false;
   }
 
-  // Player shooting
-  _shoot() {
-    this.bullets.push({
-      x: this.player.x + this.player.dir * 32,
-      y: this.player.y + 22,
-      vx: this.player.dir * 20,
-      vy: 0,
+  _updateHUD() {
+    this.onHUD && this.onHUD({
+      score: this.score,
+      coins: this.coins,
+      kills: this.kills,
     });
   }
 
-  // Spawn zombie helper: only green zombies now
-  _spawnZombie(x) {
-    // Only green zombies exist
+  // Ensure only one method controls all zombie spawning/scaling
+  _spawnZombie(x, hpOverride) {
+    // Zombies scale in health and speed with increased score
     const type = zombieTypes[0];
+    // health grows with score
+    const hp = hpOverride || this._zombieHPByScore();
     return {
-      x,
+      x: typeof x === 'number' ? x : this.width + Math.random() * 130 + 60,
       y: this.groundY - type.h + 8,
       w: type.w,
       h: type.h,
-      speed: type.speed + Math.random() * 0.45,
+      speed: type.speed + Math.min(this.score / 2000, 1.2) + Math.random() * 0.4,
       dead: false,
       _falling: false,
       type: type.name,
@@ -831,7 +733,34 @@ class GameWorld {
       coins: type.coins,
       label: type.label,
       labelColor: type.labelColor,
+      hp,
+      maxhp: hp
     };
+  }
+
+  // Spawns eventually scale up to 7+ zombies; caps at score 4000+
+  _maxZombieCount() {
+    if (this.score < 600) return 4;
+    if (this.score < 1200) return 5;
+    if (this.score < 2000) return 6;
+    if (this.score < 4000) return 7;
+    return 8;
+  }
+
+  _zombieHPByScore() {
+    if (this.score < 800) return 1;
+    if (this.score < 1600) return 2;
+    const calculated = Math.floor(this.score / 800);
+    return Math.min(4, calculated);
+  }
+
+  _shoot() {
+    this.bullets.push({
+      x: this.player.x + this.player.dir * 32,
+      y: this.player.y + 22,
+      vx: this.player.dir * 20,
+      vy: 0,
+    });
   }
 
   _collide(a, b) {
@@ -843,18 +772,17 @@ class GameWorld {
     );
   }
 
-  // -- Visual helpers
   _drawBG(ctx) {
-    const grd = ctx.createLinearGradient(0,0,0,this.height);
+    const grd = ctx.createLinearGradient(0, 0, 0, this.height);
     grd.addColorStop(0, "#292940");
     grd.addColorStop(0.4, "#1a1a1a");
     grd.addColorStop(1, "#252536");
     ctx.fillStyle = grd;
-    ctx.fillRect(0,0,this.width,this.height);
+    ctx.fillRect(0, 0, this.width, this.height);
     ctx.save();
     ctx.globalAlpha = 0.59;
     ctx.beginPath();
-    ctx.arc(this.width/2, 200+Math.sin(Date.now()/1000)*18, 340, 0, Math.PI*2);
+    ctx.arc(this.width / 2, 200 + Math.sin(Date.now() / 1000) * 18, 340, 0, Math.PI * 2);
     ctx.fillStyle = "#39ff1435";
     ctx.shadowColor = "#39ff14";
     ctx.shadowBlur = 130;
@@ -865,7 +793,6 @@ class GameWorld {
   _drawPlayer(ctx, p) {
     ctx.save();
     ctx.translate(p.x, p.y);
-    // Body
     ctx.save();
     ctx.beginPath();
     ctx.roundRect(-16, 0, 32, 50, 12);
@@ -874,7 +801,6 @@ class GameWorld {
     ctx.shadowBlur = 18;
     ctx.fill();
     ctx.restore();
-    // Alien head
     ctx.save();
     ctx.beginPath();
     ctx.ellipse(0, -15, 16, 18, 0, 0, Math.PI * 2);
@@ -883,7 +809,6 @@ class GameWorld {
     ctx.shadowBlur = 8;
     ctx.fill();
     ctx.restore();
-    // Alien eyes
     ctx.save();
     ctx.globalAlpha = 0.86;
     ctx.beginPath();
@@ -894,22 +819,20 @@ class GameWorld {
     ctx.shadowBlur = 9;
     ctx.fill();
     ctx.restore();
-    // Blaster (gun)
     ctx.save();
     ctx.rotate(p.dir === 1 ? 0.08 : -0.12);
     ctx.beginPath();
-    ctx.rect(p.dir === 1 ? 15 : -41,13, 26, 8);
+    ctx.rect(p.dir === 1 ? 15 : -41, 13, 26, 8);
     ctx.fillStyle = "#2ecffd";
     ctx.shadowColor = "#2ecffd";
     ctx.shadowBlur = 5;
     ctx.globalAlpha = 0.89;
     ctx.fill();
     ctx.restore();
-    // Arm
     ctx.save();
     ctx.beginPath();
     ctx.lineWidth = 7;
-    ctx.moveTo(0,12); ctx.lineTo(p.dir*16,28);
+    ctx.moveTo(0, 12); ctx.lineTo(p.dir * 16, 28);
     ctx.strokeStyle = "#39ff14";
     ctx.shadowColor = "#39ff14";
     ctx.shadowBlur = 5;
@@ -919,14 +842,12 @@ class GameWorld {
     ctx.restore();
   }
 
-  // PUBLIC_INTERFACE
   _drawZombie(ctx, z) {
     ctx.save();
     ctx.translate(z.x, z.y);
-    // Body
     ctx.save();
     ctx.beginPath();
-    ctx.roundRect(-z.w/2, 0, z.w, z.h, Math.max(8,Math.min(16,Math.round(z.w/4))));
+    ctx.roundRect(-z.w / 2, 0, z.w, z.h, Math.max(8, Math.min(16, Math.round(z.w / 4))));
     ctx.fillStyle = z.dead ? "#3ba04e" : z.color;
     ctx.shadowColor = z.dead ? "#37c84666" : z.shadow;
     ctx.shadowBlur = z.dead ? 3 : 17;
@@ -934,29 +855,26 @@ class GameWorld {
     ctx.fill();
     ctx.restore();
 
-    // Head
     ctx.save();
     ctx.beginPath();
-    ctx.ellipse(0, -10, Math.max(10, z.w/2), Math.max(7,z.w/2.7), 0, 0, Math.PI * 2);
+    ctx.ellipse(0, -10, Math.max(10, z.w / 2), Math.max(7, z.w / 2.7), 0, 0, Math.PI * 2);
     ctx.fillStyle = z.head;
     ctx.shadowColor = "#39ff14";
     ctx.shadowBlur = 6;
     ctx.fill();
     ctx.restore();
 
-    // Eyes
     ctx.save();
     ctx.globalAlpha = z.dead ? 0.33 : 1;
     ctx.beginPath();
-    ctx.arc(-7, -12, 3, 0, Math.PI*2);
-    ctx.arc(+7, -12, 3, 0, Math.PI*2);
+    ctx.arc(-7, -12, 3, 0, Math.PI * 2);
+    ctx.arc(+7, -12, 3, 0, Math.PI * 2);
     ctx.fillStyle = z.eyes;
     ctx.shadowColor = "#aa2c69";
     ctx.shadowBlur = 8;
     ctx.fill();
     ctx.restore();
 
-    // Mouth
     ctx.save();
     ctx.beginPath();
     ctx.arc(0, -3, 8, 0, Math.PI, false);
@@ -970,4 +888,3 @@ class GameWorld {
 }
 
 export default App;
-
