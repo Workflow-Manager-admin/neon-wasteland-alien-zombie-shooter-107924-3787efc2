@@ -1,13 +1,13 @@
-// FULL UPDATED CODE
-// ✅ Added: Zombie health + level difficulty scale
-// ✅ Added: Zombies spawn from both sides
-// ✅ Added: Leaderboard support (Supabase)
+// FULL UPDATED CODE BASED ON USER LOGIC
+// ✅ Removed levels - now infinite run
+// ✅ Zombie behavior changes based on score
+// ✅ Max zombie health capped at 4
+// ✅ Portal sacrifice auto-triggers on death
 
 import React, { useRef, useEffect, useState, useCallback } from "react";
 import PortalSacrifice from "./PortalSacrifice.jsx";
 import { createClient } from "@supabase/supabase-js";
 
-// Supabase setup
 const supabase = createClient(
   "https://tohyglycuoelcxayfdpa.supabase.co",
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRvaHlnbHljdW9lbGN4YXlmZHBhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkxMTA0OTIsImV4cCI6MjA2NDY4NjQ5Mn0.Aw6tHQ74yMarduOP7Kdk7OOV9GljbceWGk4OEAVw6LA"
@@ -17,13 +17,11 @@ async function submitScore(player, score) {
   await supabase.from("highscores").insert([{ player, score }]);
 }
 
-function Game({ coinValue = 2, levelGoal: propLevelGoal }) {
+function Game({ coinValue = 2 }) {
   const [gameState, setGameState] = useState("menu");
-  const [level, setLevel] = useState(1);
   const [coins, setCoins] = useState(0);
   const [score, setScore] = useState(0);
-  const [killsThisLevel, setKillsThisLevel] = useState(0);
-  const levelGoal = propLevelGoal || (6 + level * 2);
+  const [kills, setKills] = useState(0);
   const [showPortal, setShowPortal] = useState(false);
   const [control, setControl] = useState({ left: false, right: false, shoot: false, jump: false });
   const [playerEnabled, setPlayerEnabled] = useState(false);
@@ -44,9 +42,7 @@ function Game({ coinValue = 2, levelGoal: propLevelGoal }) {
   const startGame = useCallback(() => {
     world.current = new GameWorld({
       coinValue,
-      level,
-      levelGoal,
-      onKill: () => setKillsThisLevel(prev => prev + 1),
+      onKill: () => setKills(prev => prev + 1),
       onHUD: (hud) => {
         setScore(hud.score);
         setCoins(hud.coins);
@@ -54,20 +50,21 @@ function Game({ coinValue = 2, levelGoal: propLevelGoal }) {
       onPlayerDie: () => {
         setGameState("over");
         pauseGame();
-        submitScore("Player", score); // Update Supabase leaderboard
+        submitScore("Player", score);
+        setShowPortal(true);
       }
     });
-    setKillsThisLevel(0);
+    setKills(0);
     setShowPortal(false);
     setPaused(false);
     setPlayerEnabled(true);
     setGameState("running");
     setControl({ left: false, right: false, shoot: false, jump: false });
-  }, [coinValue, level, levelGoal, pauseGame, score]);
+  }, [coinValue, pauseGame, score]);
 
   useAnimationFrame((ts) => {
     if (gameState === "running" && !paused && world.current && canvasRef.current) {
-      if (!showPortal) world.current.update(control);
+      world.current.update(control);
       world.current.draw(canvasRef.current);
     }
   }, gameState === "running" && !paused);
@@ -94,31 +91,18 @@ function Game({ coinValue = 2, levelGoal: propLevelGoal }) {
     };
   }, [playerEnabled]);
 
-  useEffect(() => {
-    if (gameState === "running" && killsThisLevel >= levelGoal && !showPortal) {
-      pauseGame();
-      setShowPortal(true);
-      setGameState("portal");
-    }
-  }, [killsThisLevel, levelGoal, gameState, showPortal, pauseGame]);
-
   const handlePortalSacrificeDone = (coinsEarned) => {
     if (!showPortal) return;
     setCoins(c => c + coinsEarned);
-    setKillsThisLevel(0);
+    setKills(0);
     setShowPortal(false);
-    setLevel(lvl => lvl + 1);
-    setTimeout(() => {
-      resumeGame();
-      startGame();
-    }, 820);
+    startGame();
   };
 
   const handleRestart = () => {
-    setLevel(1);
     setCoins(0);
     setScore(0);
-    setKillsThisLevel(0);
+    setKills(0);
     setShowPortal(false);
     setPaused(false);
     setPlayerEnabled(false);
@@ -134,11 +118,11 @@ function Game({ coinValue = 2, levelGoal: propLevelGoal }) {
         </div>
       );
     }
-    if (showPortal && killsThisLevel > 0) {
+    if (showPortal && kills > 0) {
       return (
         <div className="game-overlay">
           <PortalSacrifice 
-            zombieCount={killsThisLevel}
+            zombieCount={kills}
             coinValue={coinValue}
             coins={coins}
             onSacrificeComplete={handlePortalSacrificeDone}
@@ -176,10 +160,8 @@ function Game({ coinValue = 2, levelGoal: propLevelGoal }) {
 export default Game;
 
 class GameWorld {
-  constructor({ coinValue, level, levelGoal, onKill, onHUD, onPlayerDie }) {
+  constructor({ coinValue, onKill, onHUD, onPlayerDie }) {
     this.coinValue = coinValue;
-    this.level = level;
-    this.levelGoal = levelGoal;
     this.onKill = onKill;
     this.onHUD = onHUD;
     this.onPlayerDie = onPlayerDie;
@@ -190,7 +172,7 @@ class GameWorld {
     this.score = 0;
     this.coins = 0;
     this.kills = 0;
-    this.zombies = Array.from({ length: this.levelGoal }, () => this._spawnZombie());
+    this.zombies = [this._spawnZombie()];
     if (this.onHUD) this.onHUD(this.getHUD());
   }
 
@@ -209,6 +191,12 @@ class GameWorld {
         }
       }
     }
+
+    // spawn more zombies constantly
+    if (this.zombies.length < 5) {
+      this.zombies.push(this._spawnZombie());
+    }
+
     if (this.onHUD) this.onHUD(this.getHUD());
   }
 
@@ -228,7 +216,6 @@ class GameWorld {
 
   getHUD() {
     return {
-      level: this.level,
       score: this.score,
       coins: this.coins,
       zombies: this.kills,
@@ -236,13 +223,26 @@ class GameWorld {
   }
 
   _spawnZombie() {
-    const side = Math.random() > 0.5 ? "left" : "right";
+    const health = this._calculateHealth();
+    const side = this._calculateSpawnSide();
     return {
       id: Math.random().toString(36),
       direction: side,
-      health: 1 + Math.floor(this.level / 2), // Health increases with level
+      health,
       dead: false
     };
+  }
+
+  _calculateHealth() {
+    if (this.score < 800) return 1;
+    if (this.score < 1600) return 2;
+    const calculated = Math.floor(this.score / 800);
+    return Math.min(4, calculated);
+  }
+
+  _calculateSpawnSide() {
+    if (this.score < 800) return "left";
+    return Math.random() > 0.5 ? "left" : "right";
   }
 }
 
