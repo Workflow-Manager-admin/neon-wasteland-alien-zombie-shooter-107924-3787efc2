@@ -307,4 +307,63 @@ button.neon-btn:focus {
 ::-webkit-scrollbar { width:7px; background: #242435;}
 ::-webkit-scrollbar-thumb { background: #39ff1422;}
 
+.portal-zombie {
+  position: absolute;
+  width: 38px;
+  height: 68px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.3s ease;
+}
+.pz-body {
+  width: 28px;
+  height: 40px;
+  background: #39ff14;
+  border-radius: 8px;
+  box-shadow: 0 0 12px #39ff14aa;
+}
+.pz-head {
+  position: absolute;
+  top: -24px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #191919;
+}
+.pz-eye {
+  position: absolute;
+  width: 4px;
+  height: 4px;
+  background: #ff00ff;
+  border-radius: 50%;
+  top: -16px;
+}
+.pz-eye-l {
+  left: 8px;
+}
+.pz-eye-r {
+  right: 8px;
+}
+.pz-mouth {
+  position: absolute;
+  bottom: 8px;
+  width: 12px;
+  height: 4px;
+  background: #aa2c69;
+  border-radius: 2px;
+}
+.pz-glow.anim {
+  position: absolute;
+  bottom: -10px;
+  width: 30px;
+  height: 20px;
+  background: radial-gradient(circle, #39ff1444, transparent 80%);
+  border-radius: 50%;
+  box-shadow: 0 0 18px #39ff1490;
+  animation: portal-glow-pulse 1.3s infinite;
+}
+.portal-container-glow {
+  animation: portal-glow-pulse 2s infinite;
+}
 

@@ -199,6 +199,7 @@ function App() {
 
   // --- Overlay renderer ---
   const Overlay = () => {
+    // Menu overlay
     if (gameState === 'menu') {
       return (
         <div className="game-overlay">
@@ -214,9 +215,9 @@ function App() {
         </div>
       );
     }
-    // Sacrifice overlay - only if kills > 0
+    // Sacrifice overlay with kills > 0
     if (activeSacrifice.show && gameState === 'sacrifice' && activeSacrifice.count > 0) {
-      // Each drop fires as zombie enters portal
+      // Handles zombie drop animation and live updating
       const onSacrificeDrop = (zNum) => {
         setActiveSacrifice(prev => ({
           ...prev,
@@ -226,17 +227,20 @@ function App() {
         }));
       };
 
-      // Only allow reward + round reset once per overlay
+      // When the portal sacrifice animation is complete
       const onSacrificeComplete = (totalCoins) => {
+        // Prevent double-trigger
         if (overlayActiveRef.current) return;
         overlayActiveRef.current = true;
 
+        // Award coins, finalize stats for this run
         setZombiesSacrificed(prev => prev + activeSacrifice.count);
         setHud(hudPrev => ({
           ...hudPrev,
           coins: hudPrev.coins + totalCoins,
           kills: 0,
         }));
+
         setActiveSacrifice(prev => ({
           ...prev,
           show: false,
@@ -245,10 +249,12 @@ function App() {
           liveCoinsEarned: 0,
           floats: [],
         }));
+
+        // Show Game Over overlay after delay (matching sacrifice float away)
         setTimeout(() => {
           setZombiesKilledThisRun(0);
           overlayActiveRef.current = false;
-          startGame();
+          setGameState('over');
         }, 1280);
       };
 
@@ -302,11 +308,11 @@ function App() {
         </div>
       );
     }
-    // If player dies but there are no kills this run, skip overlay ~700ms
+    // If player dies but there are no kills this run, skip overlay quickly
     if (gameState === 'sacrifice' && (!activeSacrifice.count || zombiesKilledThisRun === 0)) {
       setTimeout(() => {
         setZombiesKilledThisRun(0);
-        startGame();
+        setGameState('over');
       }, 700);
       return (
         <div className="game-overlay neon-text">
@@ -314,13 +320,80 @@ function App() {
         </div>
       );
     }
+    // GAME OVER overlay: show after sacrifice animation, present final run/journey stats
     if (gameState === 'over') {
       return (
         <div className="game-overlay">
-          <div className="game-over-title neon-text">GAME OVER</div>
-          <div className="big-score neon-text">Score: {hud.score}</div>
-          <div className="coins neon-glow">Coins: <span>{hud.coins}</span></div>
-          <button className="neon-btn" onClick={startGame}>Restart</button>
+          <div style={{
+            pointerEvents: "auto",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "#181925e3",
+            borderRadius: "16px",
+            boxShadow: "0 0 35px #39ff1498, 0 2px 16px #aa2c694a",
+            padding: "3rem 4rem",
+            minWidth: "65vw",
+            minHeight: "45vh",
+            gap: "2em",
+            border: "2.5px solid #39ff14"
+          }}>
+            <div className="game-over-title neon-text" style={{
+              textShadow: "0 0 22px #aa2c69, 0 0 30px #39ff149c"
+            }}>GAME OVER</div>
+            <div className="big-score neon-text">Final Score: <span style={{color:"#fff"}}>{hud.score}</span></div>
+            <div className="coins neon-glow" style={{fontSize: "1.24em"}}>Coins: <span>{hud.coins}</span></div>
+            <div className="neon-text" style={{
+              color: "var(--neon-primary)",
+              marginBottom: "1.2em",
+              fontSize: "1.14em"
+            }}>
+              Zombies Sacrificed: <span style={{color:"var(--neon-accent)", fontWeight:600}}>{zombiesSacrificed}</span>
+            </div>
+            <button
+              className="neon-btn"
+              style={{
+                fontSize: "1.4em",
+                marginTop: "2.4em",
+                padding: "0.9em 3.3em",
+                background: "var(--neon-accent)",
+                color: "#fff",
+                borderRadius: "17px",
+                boxShadow:
+                  "0 0 28px #aa2c69,0 0 12px #39ff14cc, 0 1.5px 16px #39ff1424 inset, 0 0 25px #fff3",
+                textShadow: "0 0 16px #fff9, 0 0 13px #39ff14bb",
+                fontWeight: 800,
+                letterSpacing: "0.16em",
+                outline: "none",
+                border: "none",
+                transition: "background 0.13s, box-shadow 0.18s",
+                cursor: "pointer",
+                filter: "drop-shadow(0 0 30px #39ff1422)",
+              }}
+              autoFocus
+              onClick={() => {
+                setHud({ score: 0, coins: 0, kills: 0 });
+                setZombiesSacrificed(0);
+                setZombiesKilledThisRun(0);
+                setActiveSacrifice({
+                  show: false,
+                  count: 0,
+                  coins: 0,
+                  coinValue: 2,
+                  liveZombiesSacrificed: 0,
+                  liveCoinsEarned: 0,
+                  floats: []
+                });
+                setControl({ left: false, right: false, shoot: false, jump: false });
+                setTimeout(() => {
+                  startGame();
+                }, 80);
+              }}
+            >
+              PLAY AGAIN
+            </button>
+          </div>
         </div>
       );
     }
