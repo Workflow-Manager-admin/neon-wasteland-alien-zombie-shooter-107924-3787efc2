@@ -90,21 +90,6 @@ function App() {
 
   // Start/reset game with endless score-based logic
   const startGame = () => {
-    // Fully clear dynamic styles/inline CSS from previous game or overlays
-    try {
-      // Remove any inline changes from canvas/container
-      const cont = document.querySelector(".game-canvas-container");
-      if (cont) {
-        cont.removeAttribute("style");
-        cont.className = "game-canvas-container";
-      }
-      const canvas = document.querySelector("#game-canvas");
-      if (canvas) {
-        canvas.removeAttribute("style");
-        canvas.width = THEME.canvasWidth;
-        canvas.height = THEME.canvasHeight;
-      }
-    } catch (e) { /* ignore */ }
     // Bump session key to force React to remount game area/canvas
     setGameSession(s => s + 1);
 
