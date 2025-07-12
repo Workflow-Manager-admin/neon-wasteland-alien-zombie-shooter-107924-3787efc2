@@ -664,15 +664,17 @@ class EndlessGameWorld {
     this.player.x += dx;
     this.player.dir = dx > 0 ? 1 : dx < 0 ? -1 : this.player.dir;
 
-    // --- Prevent player from moving out of canvas bounds, factoring in width ---
-    // Player is centered on x (x is at left edge of sprite), width is this.player.width
-    // The visible canvas (no scroll): x must be >= 0, x+width <= this.width (at scrollX=0)
-    // The world allows scrolling, so restrict player within the visible scroll area.
-    // "this.player.x" is in world coordinates relative to scrollX, but keep player on visible area
+    // --- Prevent player from moving out of canvas bounds, factoring in full sprite width ---
+    // LEFT EDGE: Clamp so player's left never goes out of view. Use margin 0 (or positive if padding wanted)
+    // RIGHT EDGE: Clamp so player's RIGHT edge never goes beyond canvas' right edge. (maxX = canvasWidth - player.width)
 
-    // Clamp player.x so the player remains fully visible within the world/canvas
-    const minX = 0; // left edge of the whole world (scrollX=0)
-    const maxX = this.width - this.player.width; // right edge of visible canvas
+    // Optional: For extra caution, you can introduce a tiny margin to guarantee no subpixel leak.
+    const leftMargin = 0; // change to a small positive integer if you want to keep a gap
+    const rightMargin = 0; // likewise, set >0 to prevent floating-point errors
+
+    const minX = leftMargin; // Ensures left of player is always within view
+    const maxX = this.width - this.player.width - rightMargin; // Ensures fully visible at right
+
     if (this.player.x < minX) this.player.x = minX;
     if (this.player.x > maxX) this.player.x = maxX;
 
