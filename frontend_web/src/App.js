@@ -618,7 +618,12 @@ class EndlessGameWorld {
     this._updateHUD();
   }
 
+  // PUBLIC_INTERFACE
   draw(canvas) {
+    /**
+     * Draw main game scene (background, ground, player, zombies, etc) to canvas. Always call this per frame.
+     * The _drawBG method provides the neon-toxic wasteland theme background and ground plane.
+     */
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     this._drawBG(ctx);
@@ -640,6 +645,51 @@ class EndlessGameWorld {
 
     // [drawing omitted, as per original basic endless game]
     ctx.restore();
+  }
+
+  /**
+   * Draws the neon wasteland canvas background and toxic ground.
+   * Fills with a dark gradient sky and a bright neon ground band at the horizon.
+   * @param {CanvasRenderingContext2D} ctx
+   */
+  _drawBG(ctx) {
+    const w = this.width, h = this.height;
+    // Background Sky: dark purple to black gradient
+    const grad = ctx.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, "#2c005b");
+    grad.addColorStop(0.43, "#23243a");
+    grad.addColorStop(0.9, "#181925");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, w, h);
+
+    // Toxic neon ground
+    const groundY = this.groundY + 24;
+    const grd = ctx.createLinearGradient(0, groundY - 32, 0, h);
+    grd.addColorStop(0.0, "#39ff14");
+    grd.addColorStop(0.16, "#98ff60b8");
+    grd.addColorStop(0.63, "#1a1a1a");
+    grd.addColorStop(1.0, "#090910");
+    ctx.fillStyle = grd;
+    ctx.fillRect(0, groundY, w, h - groundY);
+
+    // Horizon glow
+    ctx.save();
+    ctx.globalAlpha = 0.12;
+    ctx.shadowColor = "#39ff14";
+    ctx.shadowBlur = 24;
+    ctx.fillStyle = "#39ff14";
+    ctx.fillRect(0, this.groundY - 9, w, 18);
+    ctx.restore();
+
+    // Extra: subtle horizon band
+    ctx.save();
+    ctx.globalAlpha = 0.17;
+    ctx.fillStyle = "#aa2c69";
+    ctx.fillRect(0, this.groundY - 1.5, w, 3);
+    ctx.restore();
+
+    // Optionally, add occasional bright toxic plumes (for effect only)
+    // (could extend later for more visual interest)
   }
 
   _playerSpawn() {
