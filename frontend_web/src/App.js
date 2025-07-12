@@ -347,14 +347,14 @@ function App() {
             <div className="game-over-title neon-text" style={{
               textShadow: "0 0 22px #aa2c69, 0 0 30px #39ff149c"
             }}>GAME OVER</div>
-            <div className="big-score neon-text">Final Score: <span style={{color:"#fff"}}>{hud.score}</span></div>
-            <div className="coins neon-glow" style={{fontSize: "1.24em"}}>Coins: <span>{hud.coins}</span></div>
+            <div className="big-score neon-text">Final Score: <span style={{ color: "#fff" }}>{hud.score}</span></div>
+            <div className="coins neon-glow" style={{ fontSize: "1.24em" }}>Coins: <span>{hud.coins}</span></div>
             <div className="neon-text" style={{
               color: "var(--neon-primary)",
               marginBottom: "1.2em",
               fontSize: "1.14em"
             }}>
-              Zombies Sacrificed: <span style={{color:"var(--neon-accent)", fontWeight:600}}>{zombiesSacrificed}</span>
+              Zombies Sacrificed: <span style={{ color: "var(--neon-accent)", fontWeight: 600 }}>{zombiesSacrificed}</span>
             </div>
             <button
               className="neon-btn"
@@ -729,7 +729,6 @@ class EndlessGameWorld {
       const rec = canvas.getBoundingClientRect();
       // Use the rendered width (should match internal this.width at 1:1)
       canvasWidth = Math.round(rec.width);
-      // Update drawing context as well to respect native drawing scale if needed (not changed here)
     }
     // For full accuracy, if player sprite will be scaled too, update playerWidth similarly here
     // If you use display scaling for player (e.g. with CSS), adjust playerWidth
@@ -740,36 +739,61 @@ class EndlessGameWorld {
     const player = this.player;
     let dx = 0;
 
-    // Always get latest DOM width/responsive size
-    let minX = 0;
+    const minX = 0;
     let maxX = (canvasWidth - playerWidth);
     if (maxX < minX) maxX = minX;
 
-    // Clamp player.x to valid range BEFORE movement, in case a resize happened
-    if (player.x < minX) player.x = minX;
-    if (player.x > maxX) player.x = maxX;
+    // Clamp player's position BEFORE processing input in case of a recent resize
+    if (player.x < minX) {
+      console.log(`[DEBUG][CLAMP_BEFORE] player.x was below minX, clamped: ${player.x}→${minX}`);
+      player.x = minX;
+    }
+    if (player.x > maxX) {
+      console.log(`[DEBUG][CLAMP_BEFORE] player.x was above maxX, clamped: ${player.x}→${maxX}`);
+      player.x = maxX;
+    }
 
-    // (1) Only allow left movement if player.x > 0; right movement if player.x + width < canvasWidth
+    // Only allow left if player.x > minX, right if player.x + width < canvasWidth
     if (control.left && player.x > minX) {
       dx -= player.speed;
     }
-    if (control.right && player.x + playerWidth < canvasWidth) {
+    if (control.right && player.x + player.width < canvasWidth) {
       dx += player.speed;
     }
+    // Clamp dx if it would move the player beyond minX/maxX
+    if (dx < 0 && player.x + dx < minX) {
+      dx = minX - player.x;
+    }
+    if (dx > 0 && player.x + dx > maxX) {
+      dx = maxX - player.x;
+    }
     player.x += dx;
-    // Clamp again after moving in case over/under shot
-    if (player.x < minX) player.x = minX;
-    if (player.x > maxX) player.x = maxX;
+
+    // Clamp again after moving
+    if (player.x < minX) {
+      console.log(`[DEBUG][CLAMP_AFTER] player.x below minX after move, clamped: ${player.x}→${minX}`);
+      player.x = minX;
+    }
+    if (player.x > maxX) {
+      console.log(`[DEBUG][CLAMP_AFTER] player.x above maxX after move, clamped: ${player.x}→${maxX}`);
+      player.x = maxX;
+    }
 
     player.dir = dx > 0 ? 1 : dx < 0 ? -1 : player.dir;
 
-    // Debug logs every frame (or at least on movement/resize for performance—here, every frame for clarity)
+    // Debug logs for boundaries, player positions and movement
     if (typeof window !== "undefined" && window.console) {
-      // Calculate rightmost X the center of player can reach
-      const maxRightX = maxX;
-      console.log(
-        `[DEBUG] player.x=${player.x}, player.width=${playerWidth}, canvasWidth=${canvasWidth}, maxRightX=${maxRightX}`
-      );
+      const rightEdge = player.x + player.width;
+      const logInfo = {
+        'player.x': player.x,
+        'player.width': player.width,
+        'player.x + width': rightEdge,
+        'canvasWidth': canvasWidth,
+        'minX': minX,
+        'maxX': maxX,
+        'dx': dx,
+      };
+      console.log('[DEBUG][PLAYER_BOUNDS]', logInfo);
     }
 
     if (this.player.x - this.scrollX > canvasWidth * 0.4)
