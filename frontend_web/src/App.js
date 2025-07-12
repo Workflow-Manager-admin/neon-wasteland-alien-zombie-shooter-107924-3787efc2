@@ -555,15 +555,26 @@ class EndlessGameWorld {
       let canvas = document.getElementById('game-canvas');
       if (canvas) {
         let rect = canvas.getBoundingClientRect();
-        // Use DOM width for movement boundaries in update
-        this.width = Math.round(rect.width);
-        this.height = Math.round(rect.height);
+        const newWidth = Math.round(rect.width);
+        const newHeight = Math.round(rect.height);
+        this.width = newWidth;
+        this.height = newHeight;
+        // Optional: log resize debug (update boundary info)
+        if (typeof window !== "undefined" && window.console) {
+          let playerWidth = this.player && this.player.width ? this.player.width : 0;
+          let maxRightX = newWidth - playerWidth;
+          console.log(
+            `[DEBUG][RESIZE] canvasWidth=${newWidth}, player.width=${playerWidth}, maxRightX=${maxRightX}`
+          );
+        }
       }
       // Player width remains constant unless display scaling is used on sprite as well
       // (If you add sprite scaling for the player DOM element, update this.player.width similarly)
     };
     if (typeof window !== "undefined" && window.addEventListener) {
       window.addEventListener("resize", this._handleResize);
+      // Immediately call it once at init for true DOM size in case mount timing weird
+      setTimeout(this._handleResize, 50);
     }
     // Clean up listener if needed (not strictly needed for GC)
 
@@ -725,28 +736,39 @@ class EndlessGameWorld {
     // Otherwise, rely on this.player.width as the actual hitbox/sprite size
 
     // Player controls/movement
+    // --- Compute up-to-date DOM-based boundaries ---
+    const player = this.player;
     let dx = 0;
-    if (control.left) dx -= this.player.speed;
-    if (control.right) dx += this.player.speed;
-    this.player.x += dx;
-    this.player.dir = dx > 0 ? 1 : dx < 0 ? -1 : this.player.dir;
 
-    // === RE-COMPUTE DOM-BASED MIN/MAX, CLAMP PRECISELY, LOG DEBUG EVERY FRAME ===
-    // Always compute boundary from latest DOM
-    // Note: Only clamp to integer positions to avoid subpixel rounding issues (unless you want silky movements)
-
-    const minX = 0; // leftmost visible
-    // For the right edge: last valid x means (player.x + playerWidth) === canvasWidth
+    // Always get latest DOM width/responsive size
+    let minX = 0;
     let maxX = (canvasWidth - playerWidth);
-    if (maxX < minX) maxX = minX; // avoid inverted ranges
-    // Clamp
-    if (this.player.x < minX) this.player.x = minX;
-    if (this.player.x > maxX) this.player.x = maxX;
+    if (maxX < minX) maxX = minX;
 
-    // Log debug info each frame:
+    // Clamp player.x to valid range BEFORE movement, in case a resize happened
+    if (player.x < minX) player.x = minX;
+    if (player.x > maxX) player.x = maxX;
+
+    // (1) Only allow left movement if player.x > 0; right movement if player.x + width < canvasWidth
+    if (control.left && player.x > minX) {
+      dx -= player.speed;
+    }
+    if (control.right && player.x + playerWidth < canvasWidth) {
+      dx += player.speed;
+    }
+    player.x += dx;
+    // Clamp again after moving in case over/under shot
+    if (player.x < minX) player.x = minX;
+    if (player.x > maxX) player.x = maxX;
+
+    player.dir = dx > 0 ? 1 : dx < 0 ? -1 : player.dir;
+
+    // Debug logs every frame (or at least on movement/resize for performance—here, every frame for clarity)
     if (typeof window !== "undefined" && window.console) {
+      // Calculate rightmost X the center of player can reach
+      const maxRightX = maxX;
       console.log(
-        `[DEBUG] player.x=${this.player.x}, canvasWidth=${canvasWidth}, playerWidth=${playerWidth}, maxRightX=${maxX}`
+        `[DEBUG] player.x=${player.x}, player.width=${playerWidth}, canvasWidth=${canvasWidth}, maxRightX=${maxRightX}`
       );
     }
 
