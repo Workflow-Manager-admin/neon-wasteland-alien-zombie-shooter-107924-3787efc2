@@ -550,20 +550,16 @@ class EndlessGameWorld {
     this.playerJumpStrength = 22.5;
     this.state = 'running';
 
-    // For spawn logic:
-    /**
-     * Zombie spawn system (all timers in ms)
-     * - Initial: random 3000-5000 ms (3~5s)
-     * - Gradually decreases to random 1000-2000 ms (1~2s) as kill count rises
-     * - Never drops below 1000 ms (min) or 2000 ms (max)
-     * - Recomputed after every kill, never stacks/overlaps timers
-     */
+    // Updated: Clean timer logic for zombie spawn intervals
     this._zombieSpawnMinInterval = 3000;
     this._zombieSpawnMaxInterval = 5000;
     this._zombieSpawnAbsoluteMin = 1000;
     this._zombieSpawnAbsoluteMax = 2000;
     this.zombieSpawnTimer = 0; // ms remaining until next spawn
     this._lastKillCount = 0; // Used to re-adjust timer every time kills increase
+
+    // Tracks if initial zombies have spawned to guarantee smooth flow (used for double-immediate zombies)
+    this._spawnedInitialZombies = false;
 
     this.reset();
   }
@@ -581,16 +577,24 @@ class EndlessGameWorld {
     this.effects = [];
     this._playerSpawn();
 
-    // Variable-interval zombie spawn timer system
-    this._updateZombieSpawnInterval(true /* isInitial */);
+    // Flag for new initial zombies spawn flow
+    this._spawnedInitialZombies = false; // Will be set true after first two immediate zombies
+
+    // On reset, clear spawn timers
+    this.zombieSpawnTimer = 0;
     this._lastKillCount = 0;
     this._spawnAccumulator = 0;
+    this.maxZombies = 5; // may scale, keep for possible dynamic scaling
 
-    // Start zombies: spawn both from left and right, scattered
-    this.maxZombies = 5;
-    for (let i = 0; i < this.maxZombies - 1; ++i) {
-      this.zombies.push(this._spawnZombie(undefined, undefined, i % 2 === 0 ? "left" : "right"));
-    }
+    // Spawn first zombie immediately
+    this.zombies.push(this._spawnZombie(undefined, undefined, Math.random() < 0.5 ? "left" : "right"));
+    // Schedule the second zombie for within ~200-800ms into game
+    this._initialSecondZombieDelay = Math.floor(Math.random() * 600) + 200; // 200-800ms
+    this._secondZombieSpawned = false;
+
+    // No spawn timer until after both initial zombies are in
+    this.zombieSpawnTimer = null;
+
     this._updateHUD();
   }
 
@@ -757,44 +761,55 @@ class EndlessGameWorld {
       (e.type === "label" && e.t < 33)
     );
 
-    // ---- Refined SPAWN LOGIC: timer-driven, smooth, adjustable ----
+    // ---- SPAWN LOGIC (clean new system): ensures 2 zombies appear within first second, then interval spawn ----
 
     // Only spawn if below max zombies (alive, not dead)
     const numLivingZombies = this.zombies.filter(z => !z.dead).length;
     const maxToSpawn = this._maxZombieCount();
     let now = Date.now();
-    let dt = 16; // capped update, ~60 FPS
+    let dt = 16; // capped update
 
-    // Accumulate time since last update for stable timer decrement (better than Date-based for animation loops)
+    // Time accumulation for frame-correct decrement
     if (typeof this._lastUpdateTs !== 'number') this._lastUpdateTs = now;
     dt = now - this._lastUpdateTs;
     this._lastUpdateTs = now;
-    // If game is paused and comes back, dt can spike, so clamp
     if (dt > 200) dt = 32;
 
-    // Only handle spawn timer if not at max
-    if (numLivingZombies < maxToSpawn) {
-      // decrement the timer by elapsed dt
-      this.zombieSpawnTimer -= dt;
-      while (this.zombieSpawnTimer <= 0) {
-        // time to spawn a zombie
-        const hp = this._zombieHPByScore();
-        this.zombies.push(this._spawnZombie(undefined, hp, Math.random() < 0.5 ? "left" : "right"));
-
-        // Immediately choose a new interval for the next spawn, using current difficulty
-        // (Don't let it go below absolute min/max)
-        let minI = this._zombieSpawnMinInterval, maxI = this._zombieSpawnMaxInterval;
-        if (minI < this._zombieSpawnAbsoluteMin) minI = this._zombieSpawnAbsoluteMin;
-        if (maxI < this._zombieSpawnAbsoluteMax) maxI = this._zombieSpawnAbsoluteMax;
-        let nextDelay = Math.floor(Math.random() * (maxI - minI + 1)) + minI;
-        // Reset timer with "carry over" in case timer overshot (should only be a small leftover)
-        this.zombieSpawnTimer += nextDelay;
-        // If timer is still below zero (e.g., lag spike), continue in the loop to spawn multiple if needed
-        // But do not let more than (maxToSpawn - current) spawn in a single frame
-        if (this.zombies.filter(z => !z.dead).length >= maxToSpawn) break;
+    // Handle initial game start immediate/delayed zombie spawns
+    if (!this._spawnedInitialZombies) {
+      // Zombie #1 is already spawned in reset(); Zombie #2 spawns after "this._initialSecondZombieDelay"
+      if (!this._secondZombieSpawned) {
+        if (typeof this._initialSecondZombieElapsed === "undefined") this._initialSecondZombieElapsed = 0;
+        this._initialSecondZombieElapsed += dt;
+        if (this._initialSecondZombieElapsed >= this._initialSecondZombieDelay) {
+          // Spawn the second zombie
+          this.zombies.push(this._spawnZombie(undefined, undefined, Math.random() < 0.5 ? "left" : "right"));
+          this._secondZombieSpawned = true;
+          // After both initial zombies, enable the regular spawn timer system (interval-based)
+          this._updateZombieSpawnInterval(true /* isInitial */);
+          this._spawnedInitialZombies = true;
+        }
       }
+      // During this phase, skip regular timer logic entirely
     } else {
-      // If at max, do not count down timer (wait until a zombie dies), keep interval logic intact
+      // --- Main interval timer system (never overlaps) ---
+      if (numLivingZombies < maxToSpawn) {
+        if (typeof this.zombieSpawnTimer !== "number") this.zombieSpawnTimer = 0;
+        this.zombieSpawnTimer -= dt;
+        // Prevent stacking multiple spawns in one frame more than maxToSpawn
+        while (this.zombieSpawnTimer <= 0 && this.zombies.filter(z => !z.dead).length < maxToSpawn) {
+          // spawn a zombie
+          const hp = this._zombieHPByScore();
+          this.zombies.push(this._spawnZombie(undefined, hp, Math.random() < 0.5 ? "left" : "right"));
+          // Get randomized next interval (difficulty-adjusted)
+          let minI = this._zombieSpawnMinInterval, maxI = this._zombieSpawnMaxInterval;
+          if (minI < this._zombieSpawnAbsoluteMin) minI = this._zombieSpawnAbsoluteMin;
+          if (maxI < this._zombieSpawnAbsoluteMax) maxI = this._zombieSpawnAbsoluteMax;
+          let nextDelay = Math.floor(Math.random() * (maxI - minI + 1)) + minI;
+          this.zombieSpawnTimer += nextDelay;
+        }
+      }
+      // If at max, do not decrement spawn timer, just wait for a zombie to die.
     }
 
     // Update HUD
