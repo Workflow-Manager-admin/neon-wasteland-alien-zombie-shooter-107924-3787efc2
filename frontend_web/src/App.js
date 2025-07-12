@@ -703,10 +703,15 @@ class EndlessGameWorld {
     const rightMargin = 0; // likewise, set >0 to prevent floating-point errors
 
     const minX = leftMargin; // Ensures left of player is always within view
-    const maxX = this.width - this.player.width - rightMargin; // Ensures fully visible at right
+    // RIGHT EDGE: Allow player.x + player.width === this.width, never more. Account for floating-point imprecision.
+    const maxX = this.width - this.player.width + rightMargin;
 
+    // Clamp player.x to never be below minX nor above maxX (must allow exact equality at canvas edge)
     if (this.player.x < minX) this.player.x = minX;
     if (this.player.x > maxX) this.player.x = maxX;
+
+    // Debug (uncomment for live testing the right edge clamp)
+    // console.log("PLAYER RIGHT=", (this.player.x + this.player.width), "CANVAS WIDTH=", this.width, "| player.x=", this.player.x, "player.width=", this.player.width, "maxX=", maxX);
 
     if (this.player.x - this.scrollX > this.width * 0.4)
       this.scrollX = this.player.x - this.width * 0.4;
