@@ -93,6 +93,7 @@ function App() {
     // Bump session key to force React to remount game area/canvas
     setGameSession(s => s + 1);
 
+    // On Play Again/reset: new EndlessGameWorld so all milestone/difficulty arrays are reset
     world.current = new EndlessGameWorld(THEME, (hudObj) => {
       setHud(hudObj);
       setZombiesKilledThisRun(hudObj.kills || 0);
@@ -122,6 +123,7 @@ function App() {
     setGameState('running');
     setControl({ left: false, right: false, shoot: false, jump: false });
     setZombiesKilledThisRun(0);
+    // All milestone/difficulty arrays/progress will be fresh in the new EndlessGameWorld instance!
   };
 
   // Endless game loop
@@ -629,7 +631,7 @@ class EndlessGameWorld {
     this._playerSpawn();
 
     // Milestone and difficulty state resets HERE (important when restarting game!)
-    this._zombieSpawnMilestones = [];
+    this._zombieSpawnMilestones = []; // <-- MUST be present, ensures milestone array reset!
     this._spawnedInitialZombies = false; // Will be set true after first three immediate zombies
     // No persistent scaling—score and milestone state are reset, so all bonus zombie logic will also reset
 
@@ -743,6 +745,9 @@ class EndlessGameWorld {
     // Only SPAWN LOGIC and _maxZombieCount documentation and code will be shown in detail
 
     // [cut: unchanged player and bullet/zombie logic here, see original for unmodified code]
+
+    // --- AUTO DIFFICULTY/SCALING MILESTONE: Call _maxZombieCount() on every update to trigger milestone logic ---
+    this._maxZombieCount();
 
     // ---- SPAWN LOGIC ----
 
@@ -941,16 +946,47 @@ class EndlessGameWorld {
    * - After score >= 1500, add +1 zombie for each 1500 points above 1500 (stacks with above)
    * - When score >= 3500, previous hardmode logic for bonus applies and stacks.
    */
+  /**
+   * Calculates the current max number of zombies to spawn, based on
+   * milestone progress and new 1500+ difficulty logic (stacks).
+   *
+   * - Base: baseZombies + milestonesReached * zombiesPerMilestone
+   *   (e.g. base 3, +2 at 2500, +4 at 5000, etc.)
+   * - After score >= 1500, add +1 zombie for every full 1500 points above 1500
+   * - When score >= 3500, previous hardmode logic for bonus applies and stacks.
+   * - Milestone logic resets on Play Again ("startGame").
+   *
+   * ! FIX: Ensure milestone addition triggers once per threshold (2500, 5000, etc.)
+   * ! and resets properly on new game.
+   * ! Also, after each kill/score change, ensure milestones are updated live.
+   */
   _maxZombieCount() {
-    let count = this.baseZombies + this._zombieSpawnMilestones.length * this.zombiePerMilestone;
+    // Recompute milestone: any time the player crosses a new 2500-step milestone,
+    // add a record to _zombieSpawnMilestones if not already there.
+    // Also, on Play Again/reset, milestones must be reset in .reset().
+    const milestoneBase = this.milestoneBase || 2500;
+    const perMilestone = this.zombiePerMilestone || 2;
+    let milestonesReached = 0;
+    if (!this._zombieSpawnMilestones) this._zombieSpawnMilestones = [];
+    // Crossed milestones: only add new ones
+    const score = typeof this.score === "number" ? this.score : 0;
+    let highestChecked = (this._zombieSpawnMilestones.length * milestoneBase) || 0;
+    // Scan for newly crossed milestones
+    for (let i = this._zombieSpawnMilestones.length + 1; score >= i * milestoneBase; ++i) {
+      if (!this._zombieSpawnMilestones.includes(i * milestoneBase)) {
+        this._zombieSpawnMilestones.push(i * milestoneBase);
+      }
+    }
+    milestonesReached = this._zombieSpawnMilestones.length;
+    let count = this.baseZombies + milestonesReached * perMilestone;
     // After score >= 1500, add +1 zombie for every full 1500 points above 1500
-    if (this.score >= 1500) {
-      const bonus1500 = Math.floor((this.score - 1500) / 1500) + 1;
+    if (score >= 1500) {
+      const bonus1500 = Math.floor((score - 1500) / 1500) + 1;
       count += bonus1500;
     }
     // Extra difficulty: After score 3500, further increase max (stacks!)
-    if (this.score >= 3500) {
-      const bonus = Math.floor((this.score - 3500) / 750) + 1;
+    if (score >= 3500) {
+      const bonus = Math.floor((score - 3500) / 750) + 1;
       count += bonus;
     }
     return count;
