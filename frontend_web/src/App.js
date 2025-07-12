@@ -550,6 +550,23 @@ class EndlessGameWorld {
     this.playerJumpStrength = 22.5;
     this.state = 'running';
 
+    // Responsive: keep true canvas/player size updated on window resize
+    this._handleResize = () => {
+      let canvas = document.getElementById('game-canvas');
+      if (canvas) {
+        let rect = canvas.getBoundingClientRect();
+        // Use DOM width for movement boundaries in update
+        this.width = Math.round(rect.width);
+        this.height = Math.round(rect.height);
+      }
+      // Player width remains constant unless display scaling is used on sprite as well
+      // (If you add sprite scaling for the player DOM element, update this.player.width similarly)
+    };
+    if (typeof window !== "undefined" && window.addEventListener) {
+      window.addEventListener("resize", this._handleResize);
+    }
+    // Clean up listener if needed (not strictly needed for GC)
+
     // --- Initial spawn interval tuning for higher early challenge ---
     // At score 0, use more aggressive spawn intervals (2–3s between zombies)
     this._zombieSpawnMinInterval = 2000;
@@ -687,6 +704,26 @@ class EndlessGameWorld {
   update(control) {
     if (this.state !== 'running') return;
 
+    // === LIVE DOM SIZES FOR RESPONSIVE CANVAS AND SPRITE ===
+    let canvas = null;
+    // Find the actual canvas DOM element each frame for up-to-date size info
+    if (typeof window !== "undefined" && window.document) {
+      canvas = document.getElementById('game-canvas');
+    }
+    let canvasWidth = this.width;
+    let playerWidth = this.player.width;
+    if (canvas) {
+      // `width` is the actual drawing buffer width; `offsetWidth` is CSS/displayed size
+      // To be fully accurate (e.g., on responsive layouts), use getBoundingClientRect
+      const rec = canvas.getBoundingClientRect();
+      // Use the rendered width (should match internal this.width at 1:1)
+      canvasWidth = Math.round(rec.width);
+      // Update drawing context as well to respect native drawing scale if needed (not changed here)
+    }
+    // For full accuracy, if player sprite will be scaled too, update playerWidth similarly here
+    // If you use display scaling for player (e.g. with CSS), adjust playerWidth
+    // Otherwise, rely on this.player.width as the actual hitbox/sprite size
+
     // Player controls/movement
     let dx = 0;
     if (control.left) dx -= this.player.speed;
@@ -694,27 +731,27 @@ class EndlessGameWorld {
     this.player.x += dx;
     this.player.dir = dx > 0 ? 1 : dx < 0 ? -1 : this.player.dir;
 
-    // --- Prevent player from moving out of canvas bounds, factoring in full sprite width ---
-    // LEFT EDGE: Clamp so player's left never goes out of view. Use margin 0 (or positive if padding wanted)
-    // RIGHT EDGE: Clamp so player's RIGHT edge never goes beyond canvas' right edge. (maxX = canvasWidth - player.width)
+    // === RE-COMPUTE DOM-BASED MIN/MAX, CLAMP PRECISELY, LOG DEBUG EVERY FRAME ===
+    // Always compute boundary from latest DOM
+    // Note: Only clamp to integer positions to avoid subpixel rounding issues (unless you want silky movements)
 
-    // Optional: For extra caution, you can introduce a tiny margin to guarantee no subpixel leak.
-    const leftMargin = 0; // change to a small positive integer if you want to keep a gap
-    const rightMargin = 0; // likewise, set >0 to prevent floating-point errors
-
-    const minX = leftMargin; // Ensures left of player is always within view
-    // RIGHT EDGE: Allow player.x + player.width === this.width, never more. Account for floating-point imprecision.
-    const maxX = this.width - this.player.width + rightMargin;
-
-    // Clamp player.x to never be below minX nor above maxX (must allow exact equality at canvas edge)
+    const minX = 0; // leftmost visible
+    // For the right edge: last valid x means (player.x + playerWidth) === canvasWidth
+    let maxX = (canvasWidth - playerWidth);
+    if (maxX < minX) maxX = minX; // avoid inverted ranges
+    // Clamp
     if (this.player.x < minX) this.player.x = minX;
     if (this.player.x > maxX) this.player.x = maxX;
 
-    // Debug (uncomment for live testing the right edge clamp)
-    // console.log("PLAYER RIGHT=", (this.player.x + this.player.width), "CANVAS WIDTH=", this.width, "| player.x=", this.player.x, "player.width=", this.player.width, "maxX=", maxX);
+    // Log debug info each frame:
+    if (typeof window !== "undefined" && window.console) {
+      console.log(
+        `[DEBUG] player.x=${this.player.x}, canvasWidth=${canvasWidth}, playerWidth=${playerWidth}, maxRightX=${maxX}`
+      );
+    }
 
-    if (this.player.x - this.scrollX > this.width * 0.4)
-      this.scrollX = this.player.x - this.width * 0.4;
+    if (this.player.x - this.scrollX > canvasWidth * 0.4)
+      this.scrollX = this.player.x - canvasWidth * 0.4;
     if (this.scrollX < 0) this.scrollX = 0;
     // Jumping
     let onGround = (Math.abs(this.player.y - this.playerGroundY) < 1);
@@ -922,6 +959,39 @@ class EndlessGameWorld {
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     this._drawBG(ctx);
+
+    // === DEBUG VISUAL: Red line at true right boundary where player is clamped ===
+    // Compute current canvas width (buffer/native) and player width
+    let renderedPlayerWidth = this.player.width;
+    let domCanvasWidth = canvas.width;
+    let canvasRect = canvas.getBoundingClientRect();
+    // For visual correctness (if canvas/css size != buffer size), calculate scale ratio
+    let scaleX = 1;
+    if (canvasRect.width !== 0 && canvas.width !== 0) {
+      scaleX = canvas.width / canvasRect.width;
+    }
+    let debugDomWidth = Math.round(canvasRect.width);
+    let maxRightX = debugDomWidth - renderedPlayerWidth;
+    // Compute draw-x in buffer coords
+    let rightBoundaryBufferX;
+    {
+      // If no scaling: rightBoundaryBufferX = canvas.width - player.width
+      // But, for responsive canvas, convert DOM pixel to buffer pixel:
+      const boundaryDomX = debugDomWidth - renderedPlayerWidth; // px relative to visible canvas
+      // Convert DOM X to drawing buffer X
+      rightBoundaryBufferX = Math.round(boundaryDomX * scaleX);
+    }
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(rightBoundaryBufferX, 0);
+    ctx.lineTo(rightBoundaryBufferX, canvas.height);
+    ctx.strokeStyle = "#ef2532";
+    ctx.lineWidth = 3; // Make it stand out
+    ctx.shadowColor = "#c21029";
+    ctx.shadowBlur = 4;
+    ctx.globalAlpha = 0.73;
+    ctx.stroke();
+    ctx.restore();
 
     ctx.save();
     ctx.translate(-this.scrollX, 0);
