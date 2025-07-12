@@ -54,6 +54,8 @@ function App() {
   const [hud, setHud] = useState({
     score: 0, coins: 0, kills: 0,
   });
+  // Track a session key to force React to unmount and remount the canvas/container (prevents lingering styles)
+  const [gameSession, setGameSession] = useState(0);
   // Tracks how many zombies ever sacrificed
   const [zombiesSacrificed, setZombiesSacrificed] = useState(0);
   // Tracks zombies killed in the current run (awarded on death)
@@ -88,6 +90,24 @@ function App() {
 
   // Start/reset game with endless score-based logic
   const startGame = () => {
+    // Fully clear dynamic styles/inline CSS from previous game or overlays
+    try {
+      // Remove any inline changes from canvas/container
+      const cont = document.querySelector(".game-canvas-container");
+      if (cont) {
+        cont.removeAttribute("style");
+        cont.className = "game-canvas-container";
+      }
+      const canvas = document.querySelector("#game-canvas");
+      if (canvas) {
+        canvas.removeAttribute("style");
+        canvas.width = THEME.canvasWidth;
+        canvas.height = THEME.canvasHeight;
+      }
+    } catch (e) { /* ignore */ }
+    // Bump session key to force React to remount game area/canvas
+    setGameSession(s => s + 1);
+
     world.current = new EndlessGameWorld(THEME, (hudObj) => {
       setHud(hudObj);
       setZombiesKilledThisRun(hudObj.kills || 0);
@@ -386,6 +406,8 @@ function App() {
                   floats: []
                 });
                 setControl({ left: false, right: false, shoot: false, jump: false });
+
+                // bump gameSession and run game reset
                 setTimeout(() => {
                   startGame();
                 }, 80);
@@ -503,9 +525,10 @@ function App() {
   return (
     <div className="neon-app-root">
       <HUD />
-      <div className="game-canvas-container">
+      <div className="game-canvas-container" key={gameSession}>
         <canvas
           id="game-canvas"
+          key={gameSession}
           width={THEME.canvasWidth}
           height={THEME.canvasHeight}
           ref={canvasRef}
