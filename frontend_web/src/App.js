@@ -623,17 +623,20 @@ class EndlessGameWorld {
     this.effects = [];
     this._playerSpawn();
 
-    // Milestone list is reset on play again
+    // Milestone and difficulty state resets HERE (important when restarting game!)
     this._zombieSpawnMilestones = [];
     this._spawnedInitialZombies = false; // Will be set true after first three immediate zombies
+    // Reset any bonus zombie scaling for post-3500 score
+    // (No persistent scaling, as all score-dependent logic is from .score and ._zombieSpawnMilestones directly)
 
-    // On reset, clear spawn timers
+    // On reset, clear spawn timers, difficulty, counters
     this.zombieSpawnTimer = 0;
     this._lastKillCount = 0;
     this._spawnAccumulator = 0;
+    this._inHighScoreMode = false;
 
     // maxZombies is now managed by _currentMaxZombieCount, but we preserve for legacy API if referenced
-    this.maxZombies = this.baseZombies; 
+    this.maxZombies = this.baseZombies;
 
     // Make higher initial pressure at score 0: spawn 3 zombies immediately, each with increased speed
     const speedBoosts = [
@@ -1226,11 +1229,19 @@ class EndlessGameWorld {
    * Always:
    *   count = baseZombies + milestonesReached * zombiesPerMilestone
    *   (e.g. base 3, +2 at 2500, +4 at 5000, etc.)
+   * When score >= 3500, add additional zombies or scaling for further challenge.
    */
   _maxZombieCount() {
-    // This ensures as soon as a milestone is unlocked, the extra zombies are available
-    // Always minimum of baseZombies, plus milestones hit times zombiesPerMilestone
-    return this.baseZombies + this._zombieSpawnMilestones.length * this.zombiePerMilestone;
+    // Base from milestone logic as before
+    let count = this.baseZombies + this._zombieSpawnMilestones.length * this.zombiePerMilestone;
+    // Extra difficulty: After score 3500, further increase max
+    if (this.score >= 3500) {
+      // Add a quadratic-like ramp for each 1500 points above 3500, for dramatic late-game escalation
+      // e.g. +1 for every 750 over 3500. This can be tuned for game feel.
+      const bonus = Math.floor((this.score - 3500) / 750) + 1; // +1 at 3500+, +2 at 4250+, etc.
+      count += bonus;
+    }
+    return count;
   }
 
   _shoot() {
