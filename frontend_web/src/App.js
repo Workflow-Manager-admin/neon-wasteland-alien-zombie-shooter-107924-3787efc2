@@ -752,28 +752,11 @@ class EndlessGameWorld {
     let maxX = (canvasWidth - playerWidth);
     if (maxX < minX) maxX = minX;
 
-    // [PER-FRAME DEBUG]: log boundaries and live values before any movement/clamping
-    if (typeof window !== "undefined" && window.console) {
-      const initialRightEdge = player.x + player.width;
-      console.log('[DEBUG][FRAME_START]', {
-        'player.x': player.x,
-        'player.width': player.width,
-        'player.x + player.width': initialRightEdge,
-        'canvasWidth': canvasWidth,
-        'minX': minX,
-        'maxX': maxX,
-        'playerAtLeft': player.x <= minX,
-        'playerAtRight': initialRightEdge >= canvasWidth,
-      });
-    }
-
     // Clamp player's position BEFORE processing input in case of a recent resize
     if (player.x < minX) {
-      console.log(`[DEBUG][CLAMP_BEFORE] player.x was below minX, clamped: ${player.x}→${minX}`);
       player.x = minX;
     }
     if (player.x > maxX) {
-      console.log(`[DEBUG][CLAMP_BEFORE] player.x was above maxX, clamped: ${player.x}→${maxX}`);
       player.x = maxX;
     }
 
@@ -793,46 +776,12 @@ class EndlessGameWorld {
     }
     player.x += dx;
 
-    // [PER-FRAME DEBUG]: log updated values post-move, pre-final clamp
-    if (typeof window !== "undefined" && window.console) {
-      const midMoveRightEdge = player.x + player.width;
-      console.log('[DEBUG][FRAME_MID]', {
-        'player.x': player.x,
-        'player.width': player.width,
-        'player.x + player.width': midMoveRightEdge,
-        'canvasWidth': canvasWidth,
-        'dx': dx,
-        'minX': minX,
-        'maxX': maxX,
-        'playerAtLeft': player.x <= minX,
-        'playerAtRight': midMoveRightEdge >= canvasWidth,
-      });
-    }
-
     // Clamp again after moving
     if (player.x < minX) {
-      console.log(`[DEBUG][CLAMP_AFTER] player.x below minX after move, clamped: ${player.x}→${minX}`);
       player.x = minX;
     }
     if (player.x > maxX) {
-      console.log(`[DEBUG][CLAMP_AFTER] player.x above maxX after move, clamped: ${player.x}→${maxX}`);
       player.x = maxX;
-    }
-
-    // [PER-FRAME DEBUG]: log values after final clamp (this is guaranteed DOM-visible value)
-    if (typeof window !== "undefined" && window.console) {
-      const rightEdge = player.x + player.width;
-      console.log('[DEBUG][FRAME_FINAL]', {
-        'player.x': player.x,
-        'player.width': player.width,
-        'player.x + player.width': rightEdge,
-        'canvasWidth': canvasWidth,
-        'dx': dx,
-        'minX': minX,
-        'maxX': maxX,
-        'playerAtLeft': player.x <= minX,
-        'playerAtRight': rightEdge >= canvasWidth,
-      });
     }
 
     player.dir = dx > 0 ? 1 : dx < 0 ? -1 : player.dir;
@@ -873,24 +822,22 @@ class EndlessGameWorld {
       b.x += b.vx;
       for (let z of this.zombies) {
         if (!z.dead && z.x < b.x && b.x < z.x + z.w && z.y < b.y && b.y < z.y + z.h) {
-          z.hp -= 1;
-          if (z.hp <= 0) {
-            z.dead = true;
-            z._diedAt = Date.now();
-            this.kills += 1;
-            this.coins += z.coins;
-            this.score += 100;
-            this.effects.push({
-              type: 'label',
-              x: z.x + z.w / 2,
-              y: z.y - 13,
-              t: 0,
-              text: "+2",
-              fill: "#39ff14",
-              outline: "#1a1a1a",
-            });
-            this.effects.push({ type: 'juice', x: z.x + z.w / 2, y: z.y + z.h / 2, t: 0 });
-          }
+          // Zombies always die instantly on bullet hit
+          z.dead = true;
+          z._diedAt = Date.now();
+          this.kills += 1;
+          this.coins += z.coins;
+          this.score += 100;
+          this.effects.push({
+            type: 'label',
+            x: z.x + z.w / 2,
+            y: z.y - 13,
+            t: 0,
+            text: "+2",
+            fill: "#39ff14",
+            outline: "#1a1a1a",
+          });
+          this.effects.push({ type: 'juice', x: z.x + z.w / 2, y: z.y + z.h / 2, t: 0 });
           arr[i]._hit = true;
         }
       }
@@ -928,7 +875,7 @@ class EndlessGameWorld {
             z,
             this._spawnZombie(
               undefined,
-              this._zombieHPByScore(),
+              undefined,
               Math.random() < 0.5 ? "left" : "right"
             )
           );
@@ -1011,9 +958,8 @@ class EndlessGameWorld {
 
           // SPAWN ZOMBIES (single/double/triple)
           for (let i = 0; i < nToSpawn && this.zombies.filter(z => !z.dead).length < maxToSpawn; ++i) {
-            const hp = this._zombieHPByScore();
             const spawnSide = Math.random() < 0.5 ? "left" : "right";
-            let zombie = this._spawnZombie(undefined, hp, spawnSide);
+            let zombie = this._spawnZombie(undefined, undefined, spawnSide);
             if (inFrenzy) {
               // Up to 19% speedup for base zombie, small variety for fairness and unpredictability
               let speedBoost = 1 + (Math.random() * 0.19 + 0.09); // 9–28% faster
@@ -1202,18 +1148,15 @@ class EndlessGameWorld {
     });
   }
 
-  // Ensure only one method controls all zombie spawning/scaling
   /**
-   * Spawns a zombie at a side (left/right), with health and proper speed for entry.
+   * Spawns a zombie at a side (left/right), speed varies, no HP or health attributes.
    * @param {number|undefined} x Optional x position override (otherwise calculated by side)
-   * @param {number|undefined} hpOverride Optional health override, otherwise calculated from score
+   * @param {any} _unused Not used; included for legacy API only
    * @param {'left'|'right'|undefined} side 'left' or 'right' to control spawn side; random if omitted
    */
-  _spawnZombie(x, hpOverride, side) {
-    // Zombies scale in health and speed with increased score; entry speed starts slow
+  _spawnZombie(x, _unused, side) {
+    // All zombies are 1-hit, no HP
     const type = zombieTypes[0];
-    // health grows with score
-    const hp = typeof hpOverride === "number" ? hpOverride : this._zombieHPByScore();
     // Pick spawn side: left or right (default random)
     let spawnDir = side;
     if (!spawnDir) spawnDir = Math.random() < 0.5 ? "left" : "right";
@@ -1249,8 +1192,7 @@ class EndlessGameWorld {
       coins: type.coins,
       label: type.label,
       labelColor: type.labelColor,
-      hp,
-      maxhp: hp,
+      // No hp or maxhp
       spawnDir, // Record spawn direction for proper movement/respawn logic
     };
   }
@@ -1262,13 +1204,6 @@ class EndlessGameWorld {
     if (this.score < 2000) return 6;
     if (this.score < 4000) return 7;
     return 8;
-  }
-
-  _zombieHPByScore() {
-    if (this.score < 800) return 1;
-    if (this.score < 1600) return 2;
-    const calculated = Math.floor(this.score / 800);
-    return Math.min(4, calculated);
   }
 
   _shoot() {
