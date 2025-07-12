@@ -476,7 +476,10 @@ function useAnimationFrame(callback, isRunning = true) {
   });
 }
 
-// PUBLIC_INTERFACE - Core endless-game world with basic, original zombie spawn logic (1-hit kill, single zombie type, no difficulty stacking).
+/**
+ * PUBLIC_INTERFACE - Core endless-game world with basic, original zombie spawn logic (1-hit kill, single zombie type, no difficulty stacking).
+ * Now: gently increases zombie spawn rate slightly after score > 1000, and resets rate on Play Again.
+ */
 class EndlessGameWorld {
   /** Main endless mode: always single, simple spawn/kill, all zombies die in 1 hit, progress and milestones reset on Play Again. */
   constructor(theme, onHUD, onDeath) {
@@ -503,8 +506,15 @@ class EndlessGameWorld {
       window.addEventListener("resize", this._handleResize);
       setTimeout(this._handleResize, 50);
     }
-    this._zombieSpawnMinInterval = 2000;
-    this._zombieSpawnMaxInterval = 3000;
+    // Default zombie spawn rates (before 1000 score)
+    this._defaultZombieSpawnMinInterval = 2000;
+    this._defaultZombieSpawnMaxInterval = 3000;
+    // Post-1000-score spawn rates (gentle faster)
+    this._highScoreZombieSpawnMinInterval = 1200;   // (gentle: 1200–2000, still safe)
+    this._highScoreZombieSpawnMaxInterval = 2000;
+
+    this._zombieSpawnMinInterval = this._defaultZombieSpawnMinInterval;
+    this._zombieSpawnMaxInterval = this._defaultZombieSpawnMaxInterval;
     this._zombieSpawnAbsoluteMin = 1000;
     this._zombieSpawnAbsoluteMax = 2000;
     this.zombieSpawnTimer = 0;
@@ -524,6 +534,7 @@ class EndlessGameWorld {
     this._playerSpawn();
 
     this.maxZombies = this.baseZombies;
+    this._inHighScoreMode = false; // resets difficulty if returning via Play Again or menu
 
     // Spawn 3 zombies at start
     const speedBoosts = [
@@ -546,17 +557,25 @@ class EndlessGameWorld {
     this._secondZombieSpawned = true;
     this._spawnedInitialZombies = true;
 
+    // Ensure spawn interval is base at new game
+    this._zombieSpawnMinInterval = this._defaultZombieSpawnMinInterval;
+    this._zombieSpawnMaxInterval = this._defaultZombieSpawnMaxInterval;
     this._updateZombieSpawnInterval(true);
 
     this._updateHUD();
   }
 
   _updateZombieSpawnInterval(isInitial = false) {
-    // ORIGINAL: No difficulty scaling, just random 2–3s interval as long as under maxZombies
-    this._zombieSpawnMinInterval = 2000;
-    this._zombieSpawnMaxInterval = 3000;
-    this._inHighScoreMode = false;
-    let randomDelay = Math.floor(Math.random() * (3000 - 2000 + 1)) + 2000;
+    // After score > 1000, gently reduce spawn interval, else keep classic pace.
+    // (Note: called from reset and also whenever score is updated past 1000 below!)
+    if (this._inHighScoreMode) {
+      this._zombieSpawnMinInterval = this._highScoreZombieSpawnMinInterval;
+      this._zombieSpawnMaxInterval = this._highScoreZombieSpawnMaxInterval;
+    } else {
+      this._zombieSpawnMinInterval = this._defaultZombieSpawnMinInterval;
+      this._zombieSpawnMaxInterval = this._defaultZombieSpawnMaxInterval;
+    }
+    let randomDelay = Math.floor(Math.random() * (this._zombieSpawnMaxInterval - this._zombieSpawnMinInterval + 1)) + this._zombieSpawnMinInterval;
     this.zombieSpawnTimer = randomDelay;
     this._lastSpawnTime = Date.now();
   }
@@ -564,9 +583,13 @@ class EndlessGameWorld {
   update(control) {
     if (this.state !== 'running') return;
 
-    // ...[game logic omitted—behavior unchanged from original endless version, always 1-hit kill, basic spawn]...
+    // === GENTLE DIFFICULTY INCREASE: check score threshold for spawn rate ===
+    if (!this._inHighScoreMode && this.score > 1000) {
+      this._inHighScoreMode = true;
+      this._updateZombieSpawnInterval();
+    }
 
-    // === ZOMBIE SPAWN (NO difficulty logic, no stacking, always capped at baseZombies) ===
+    // === ZOMBIE SPAWN ===
     const numLivingZombies = this.zombies.filter(z => !z.dead).length;
     const maxToSpawn = this.maxZombies;
     let now = Date.now();
