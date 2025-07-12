@@ -599,13 +599,31 @@ class EndlessGameWorld {
   }
 
   /**
-   * Updates the variable zombie spawn interval based on kills (or for initial/after-kill recalculation).
-   * Never stacks or overlaps spawns.
-   * @param {boolean} isInitial If true, uses initial intervals; else adapts for kill count.
+   * Updates the zombie spawn interval, supporting special logic if score is sufficiently high.
+   * After score > 700, spawn intervals sharply accelerate, with possible double spawns and zombie speed-up.
+   * @param {boolean} isInitial If true, uses initial intervals; else adapts for kill count and score.
    */
-  _updateZombieSpawnInterval(isInitial=false) {
-    // Increase spawn speed as kills increase. Use this.kills
-    // Example: for every 5 kills, reduce min/max linearly until thresholds
+  _updateZombieSpawnInterval(isInitial = false) {
+    const HIGH_SCORE_THRESHOLD = 700;
+    // If score exceeds 700, enter "frenzy" spawn mode for greater pressure.
+    if (this.score > HIGH_SCORE_THRESHOLD) {
+      // New interval: 0.7–1.3s, so 700–1300ms; allow brief randomization for fairness
+      const minInterval = 700, maxInterval = 1300;
+      this._zombieSpawnMinInterval = minInterval;
+      this._zombieSpawnMaxInterval = maxInterval;
+
+      // Random interval for next spawn
+      let randomDelay = Math.floor(Math.random() * (maxInterval - minInterval + 1)) + minInterval;
+      this.zombieSpawnTimer = randomDelay;
+      this._lastSpawnTime = Date.now();
+
+      // Track if in high-score mode for use in update()
+      this._inHighScoreMode = true;
+      // Chance for double spawn next frame handled in update()
+      return;
+    }
+
+    // Normal progression up to high score: linearly reduce interval as kills increase.
     let k = Math.max(0, this.kills);
     let minStart = 3000, maxStart = 5000, minTarget = 1000, maxTarget = 2000;
     let steps = Math.floor(k / 5);
@@ -624,6 +642,7 @@ class EndlessGameWorld {
 
     this._zombieSpawnMinInterval = minInterval;
     this._zombieSpawnMaxInterval = maxInterval;
+    this._inHighScoreMode = false;
 
     // On initial or after kill: choose a random wait in the interval (applies to next zombie spawn only)
     let randomDelay = Math.floor(Math.random() * (maxInterval - minInterval + 1)) + minInterval;
@@ -761,7 +780,7 @@ class EndlessGameWorld {
       (e.type === "label" && e.t < 33)
     );
 
-    // ---- SPAWN LOGIC (clean new system): ensures 2 zombies appear within first second, then interval spawn ----
+    // ---- SPAWN LOGIC ----
 
     // Only spawn if below max zombies (alive, not dead)
     const numLivingZombies = this.zombies.filter(z => !z.dead).length;
@@ -796,15 +815,49 @@ class EndlessGameWorld {
       if (numLivingZombies < maxToSpawn) {
         if (typeof this.zombieSpawnTimer !== "number") this.zombieSpawnTimer = 0;
         this.zombieSpawnTimer -= dt;
-        // Prevent stacking multiple spawns in one frame more than maxToSpawn
+
+        // Enhanced spawn logic: after high-score, handle snappy interval and possible double/triple spawns & speedup.
+        const score = this.score;
+        const inFrenzy = !!this._inHighScoreMode;
+        const frenzyDoubleChance = 0.33; // 33% chance to double-spawn, cannot exceed maxToSpawn
+        const frenzyTripleChance = 0.11; // rare, <11% chance for triple
+
         while (this.zombieSpawnTimer <= 0 && this.zombies.filter(z => !z.dead).length < maxToSpawn) {
-          // spawn a zombie
-          const hp = this._zombieHPByScore();
-          this.zombies.push(this._spawnZombie(undefined, hp, Math.random() < 0.5 ? "left" : "right"));
+          let nToSpawn = 1;
+
+          // After score 700, occasionally double-or-triple spawn to increase challenge
+          if (inFrenzy) {
+            if (Math.random() < frenzyDoubleChance && this.zombies.filter(z => !z.dead).length <= maxToSpawn - 2) {
+              nToSpawn = 2;
+              // 10% of the time, upgrade to 3 if very high score and room (over 1300 score)
+              if (score > 1300 && Math.random() < frenzyTripleChance && this.zombies.filter(z => !z.dead).length <= maxToSpawn - 3) {
+                nToSpawn = 3;
+              }
+            }
+          }
+
+          // SPAWN ZOMBIES (single/double/triple)
+          for (let i = 0; i < nToSpawn && this.zombies.filter(z => !z.dead).length < maxToSpawn; ++i) {
+            const hp = this._zombieHPByScore();
+            const spawnSide = Math.random() < 0.5 ? "left" : "right";
+            let zombie = this._spawnZombie(undefined, hp, spawnSide);
+            if (inFrenzy) {
+              // Up to 19% speedup for base zombie, small variety for fairness and unpredictability
+              let speedBoost = 1 + (Math.random() * 0.19 + 0.09); // 9–28% faster
+              zombie.speed = zombie.speed * speedBoost;
+            }
+            this.zombies.push(zombie);
+          }
+
           // Get randomized next interval (difficulty-adjusted)
           let minI = this._zombieSpawnMinInterval, maxI = this._zombieSpawnMaxInterval;
-          if (minI < this._zombieSpawnAbsoluteMin) minI = this._zombieSpawnAbsoluteMin;
-          if (maxI < this._zombieSpawnAbsoluteMax) maxI = this._zombieSpawnAbsoluteMax;
+          if (inFrenzy) {
+            // Ensure hard lower/upper bounds for high-score mode
+            minI = 700; maxI = 1300;
+          } else {
+            if (minI < this._zombieSpawnAbsoluteMin) minI = this._zombieSpawnAbsoluteMin;
+            if (maxI < this._zombieSpawnAbsoluteMax) maxI = this._zombieSpawnAbsoluteMax;
+          }
           let nextDelay = Math.floor(Math.random() * (maxI - minI + 1)) + minI;
           this.zombieSpawnTimer += nextDelay;
         }
