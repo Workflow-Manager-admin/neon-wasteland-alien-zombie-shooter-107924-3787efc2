@@ -559,13 +559,22 @@ class EndlessGameWorld {
         const newHeight = Math.round(rect.height);
         this.width = newWidth;
         this.height = newHeight;
-        // Optional: log resize debug (update boundary info)
+        // Log resize debug: player/canvas/boundary info using live DOM
         if (typeof window !== "undefined" && window.console) {
           let playerWidth = this.player && this.player.width ? this.player.width : 0;
+          let playerX = this.player && typeof this.player.x === "number" ? this.player.x : 0;
+          let rightEdge = playerX + playerWidth;
           let maxRightX = newWidth - playerWidth;
-          console.log(
-            `[DEBUG][RESIZE] canvasWidth=${newWidth}, player.width=${playerWidth}, maxRightX=${maxRightX}`
-          );
+          const resizeLog = {
+            'canvasWidth': newWidth,
+            'player.x': playerX,
+            'player.width': playerWidth,
+            'player.x + player.width': rightEdge,
+            'maxRightX': maxRightX,
+            'playerAtLeft': playerX <= 0,
+            'playerAtRight': rightEdge >= newWidth,
+          };
+          console.log('[DEBUG][RESIZE]', resizeLog);
         }
       }
       // Player width remains constant unless display scaling is used on sprite as well
@@ -743,6 +752,21 @@ class EndlessGameWorld {
     let maxX = (canvasWidth - playerWidth);
     if (maxX < minX) maxX = minX;
 
+    // [PER-FRAME DEBUG]: log boundaries and live values before any movement/clamping
+    if (typeof window !== "undefined" && window.console) {
+      const initialRightEdge = player.x + player.width;
+      console.log('[DEBUG][FRAME_START]', {
+        'player.x': player.x,
+        'player.width': player.width,
+        'player.x + player.width': initialRightEdge,
+        'canvasWidth': canvasWidth,
+        'minX': minX,
+        'maxX': maxX,
+        'playerAtLeft': player.x <= minX,
+        'playerAtRight': initialRightEdge >= canvasWidth,
+      });
+    }
+
     // Clamp player's position BEFORE processing input in case of a recent resize
     if (player.x < minX) {
       console.log(`[DEBUG][CLAMP_BEFORE] player.x was below minX, clamped: ${player.x}→${minX}`);
@@ -769,6 +793,22 @@ class EndlessGameWorld {
     }
     player.x += dx;
 
+    // [PER-FRAME DEBUG]: log updated values post-move, pre-final clamp
+    if (typeof window !== "undefined" && window.console) {
+      const midMoveRightEdge = player.x + player.width;
+      console.log('[DEBUG][FRAME_MID]', {
+        'player.x': player.x,
+        'player.width': player.width,
+        'player.x + player.width': midMoveRightEdge,
+        'canvasWidth': canvasWidth,
+        'dx': dx,
+        'minX': minX,
+        'maxX': maxX,
+        'playerAtLeft': player.x <= minX,
+        'playerAtRight': midMoveRightEdge >= canvasWidth,
+      });
+    }
+
     // Clamp again after moving
     if (player.x < minX) {
       console.log(`[DEBUG][CLAMP_AFTER] player.x below minX after move, clamped: ${player.x}→${minX}`);
@@ -779,22 +819,23 @@ class EndlessGameWorld {
       player.x = maxX;
     }
 
-    player.dir = dx > 0 ? 1 : dx < 0 ? -1 : player.dir;
-
-    // Debug logs for boundaries, player positions and movement
+    // [PER-FRAME DEBUG]: log values after final clamp (this is guaranteed DOM-visible value)
     if (typeof window !== "undefined" && window.console) {
       const rightEdge = player.x + player.width;
-      const logInfo = {
+      console.log('[DEBUG][FRAME_FINAL]', {
         'player.x': player.x,
         'player.width': player.width,
-        'player.x + width': rightEdge,
+        'player.x + player.width': rightEdge,
         'canvasWidth': canvasWidth,
+        'dx': dx,
         'minX': minX,
         'maxX': maxX,
-        'dx': dx,
-      };
-      console.log('[DEBUG][PLAYER_BOUNDS]', logInfo);
+        'playerAtLeft': player.x <= minX,
+        'playerAtRight': rightEdge >= canvasWidth,
+      });
     }
+
+    player.dir = dx > 0 ? 1 : dx < 0 ? -1 : player.dir;
 
     if (this.player.x - this.scrollX > canvasWidth * 0.4)
       this.scrollX = this.player.x - canvasWidth * 0.4;
