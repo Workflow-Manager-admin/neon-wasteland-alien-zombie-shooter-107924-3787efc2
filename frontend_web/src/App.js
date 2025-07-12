@@ -550,15 +550,16 @@ class EndlessGameWorld {
     this.playerJumpStrength = 22.5;
     this.state = 'running';
 
-    // Updated: Clean timer logic for zombie spawn intervals
-    this._zombieSpawnMinInterval = 3000;
-    this._zombieSpawnMaxInterval = 5000;
+    // --- Initial spawn interval tuning for higher early challenge ---
+    // At score 0, use more aggressive spawn intervals (2–3s between zombies)
+    this._zombieSpawnMinInterval = 2000;
+    this._zombieSpawnMaxInterval = 3000;
     this._zombieSpawnAbsoluteMin = 1000;
     this._zombieSpawnAbsoluteMax = 2000;
     this.zombieSpawnTimer = 0; // ms remaining until next spawn
     this._lastKillCount = 0; // Used to re-adjust timer every time kills increase
 
-    // Tracks if initial zombies have spawned to guarantee smooth flow (used for double-immediate zombies)
+    // Tracks if initial zombies have spawned to guarantee smooth flow (used for triple-immediate zombies)
     this._spawnedInitialZombies = false;
 
     this.reset();
@@ -578,7 +579,7 @@ class EndlessGameWorld {
     this._playerSpawn();
 
     // Flag for new initial zombies spawn flow
-    this._spawnedInitialZombies = false; // Will be set true after first two immediate zombies
+    this._spawnedInitialZombies = false; // Will be set true after first three immediate zombies
 
     // On reset, clear spawn timers
     this.zombieSpawnTimer = 0;
@@ -586,14 +587,32 @@ class EndlessGameWorld {
     this._spawnAccumulator = 0;
     this.maxZombies = 5; // may scale, keep for possible dynamic scaling
 
-    // Spawn first zombie immediately
-    this.zombies.push(this._spawnZombie(undefined, undefined, Math.random() < 0.5 ? "left" : "right"));
-    // Schedule the second zombie for within ~200-800ms into game
-    this._initialSecondZombieDelay = Math.floor(Math.random() * 600) + 200; // 200-800ms
-    this._secondZombieSpawned = false;
+    // Make higher initial pressure at score 0: spawn 3 zombies immediately, each with increased speed
+    // Slight speedUp, e.g. 18–25% faster than base
+    const speedBoosts = [
+      1 + (Math.random() * 0.2 + 0.13), // +13–33%
+      1 + (Math.random() * 0.17 + 0.16),
+      1 + (Math.random() * 0.15 + 0.2)
+    ];
+    const spawnSides = [
+      Math.random() < 0.5 ? "left" : "right",
+      Math.random() < 0.5 ? "left" : "right",
+      Math.random() < 0.5 ? "left" : "right"
+    ];
+    for (let i = 0; i < 3; ++i) {
+      let zombie = this._spawnZombie(undefined, undefined, spawnSides[i]);
+      zombie.speed = zombie.speed * speedBoosts[i];
+      this.zombies.push(zombie);
+    }
 
-    // No spawn timer until after both initial zombies are in
-    this.zombieSpawnTimer = null;
+    // Schedule timer for WHEN regular timer will take over (simulate the old "second zombie" logic for smoothness)
+    this._initialSecondZombieDelay = Math.floor(Math.random() * 350) + 300; // 300-650ms, just a slight guard
+    this._secondZombieSpawned = true; // triple spawn disables stagger
+    this._spawnedInitialZombies = true; 
+    // Now next spawn timer must be set by _updateZombieSpawnInterval() asap after triple-spawn zombies
+
+    // Get the tight 2–3s spawn interval for initial state
+    this._updateZombieSpawnInterval(true);
 
     this._updateHUD();
   }
@@ -623,9 +642,20 @@ class EndlessGameWorld {
       return;
     }
 
+    // --- Initial state: use much tighter intervals (2–3s) for starting challenge! ---
+    if (isInitial || (typeof this.score === "number" && this.score === 0)) {
+      this._zombieSpawnMinInterval = 2000;
+      this._zombieSpawnMaxInterval = 3000;
+      this._inHighScoreMode = false;
+      let randomDelay = Math.floor(Math.random() * (3000 - 2000 + 1)) + 2000;
+      this.zombieSpawnTimer = randomDelay;
+      this._lastSpawnTime = Date.now();
+      return;
+    }
+
     // Normal progression up to high score: linearly reduce interval as kills increase.
     let k = Math.max(0, this.kills);
-    let minStart = 3000, maxStart = 5000, minTarget = 1000, maxTarget = 2000;
+    let minStart = 2000, maxStart = 3000, minTarget = 1000, maxTarget = 2000;
     let steps = Math.floor(k / 5);
     let totalSteps = 20; // After 100 kills, it reaches minimum
 
