@@ -537,6 +537,12 @@ class EndlessGameWorld {
    * EndlessGameWorld provides core game state and zombie spawning for the endless mode.
    * Implements dynamic zombie spawn interval (random between min/max, decreasing as kills rise),
    * and ensures spawn timing is recalculated immediately after every kill without timer overlaps.
+   * 
+   * Now supports dynamic scaling of zombies: 
+   * - Start with a base number,
+   * - Each 2500-point milestone increases the spawn count by 2 (cumulative),
+   * - Milestones are triggered only once each and reset on Play Again,
+   * - Zombies always die in one hit; never increase in strength.
    */
   constructor(theme, onHUD, onDeath) {
     this.theme = theme;
@@ -582,23 +588,25 @@ class EndlessGameWorld {
     };
     if (typeof window !== "undefined" && window.addEventListener) {
       window.addEventListener("resize", this._handleResize);
-      // Immediately call it once at init for true DOM size in case mount timing weird
       setTimeout(this._handleResize, 50);
     }
-    // Clean up listener if needed (not strictly needed for GC)
-
     // --- Initial spawn interval tuning for higher early challenge ---
-    // At score 0, use more aggressive spawn intervals (2–3s between zombies)
     this._zombieSpawnMinInterval = 2000;
     this._zombieSpawnMaxInterval = 3000;
     this._zombieSpawnAbsoluteMin = 1000;
     this._zombieSpawnAbsoluteMax = 2000;
     this.zombieSpawnTimer = 0; // ms remaining until next spawn
-    this._lastKillCount = 0; // Used to re-adjust timer every time kills increase
+    this._lastKillCount = 0;
 
     // Tracks if initial zombies have spawned to guarantee smooth flow (used for triple-immediate zombies)
     this._spawnedInitialZombies = false;
 
+    // Milestone mechanism: tracks what point milestones have been reached (integer score thresholds)
+    this._zombieSpawnMilestones = []; // e.g., [2500,5000,7500] for those already crossed
+
+    this.baseZombies = 3;    // Start with 3 zombies
+    this.milestoneBase = 2500; // Each milestone is 2500 points
+    this.zombiePerMilestone = 2; // +2 zombies per-milestone
     this.reset();
   }
 
@@ -615,17 +623,19 @@ class EndlessGameWorld {
     this.effects = [];
     this._playerSpawn();
 
-    // Flag for new initial zombies spawn flow
+    // Milestone list is reset on play again
+    this._zombieSpawnMilestones = [];
     this._spawnedInitialZombies = false; // Will be set true after first three immediate zombies
 
     // On reset, clear spawn timers
     this.zombieSpawnTimer = 0;
     this._lastKillCount = 0;
     this._spawnAccumulator = 0;
-    this.maxZombies = 5; // may scale, keep for possible dynamic scaling
+
+    // maxZombies is now managed by _currentMaxZombieCount, but we preserve for legacy API if referenced
+    this.maxZombies = this.baseZombies; 
 
     // Make higher initial pressure at score 0: spawn 3 zombies immediately, each with increased speed
-    // Slight speedUp, e.g. 18–25% faster than base
     const speedBoosts = [
       1 + (Math.random() * 0.2 + 0.13), // +13–33%
       1 + (Math.random() * 0.17 + 0.16),
@@ -643,10 +653,9 @@ class EndlessGameWorld {
     }
 
     // Schedule timer for WHEN regular timer will take over (simulate the old "second zombie" logic for smoothness)
-    this._initialSecondZombieDelay = Math.floor(Math.random() * 350) + 300; // 300-650ms, just a slight guard
+    this._initialSecondZombieDelay = Math.floor(Math.random() * 350) + 300;
     this._secondZombieSpawned = true; // triple spawn disables stagger
-    this._spawnedInitialZombies = true; 
-    // Now next spawn timer must be set by _updateZombieSpawnInterval() asap after triple-spawn zombies
+    this._spawnedInitialZombies = true;
 
     // Get the tight 2–3s spawn interval for initial state
     this._updateZombieSpawnInterval(true);
@@ -827,7 +836,26 @@ class EndlessGameWorld {
           z._diedAt = Date.now();
           this.kills += 1;
           this.coins += z.coins;
+
+          // Score milestone logic:
+          // Determine pre-kill score for this shot
+          const preScore = this.score;
           this.score += 100;
+
+          // Find milestones crossed by this new score (triggered only once)
+          const prevMilestone = Math.floor(preScore / this.milestoneBase);
+          const newMilestone = Math.floor(this.score / this.milestoneBase);
+
+          for (let msIdx = prevMilestone + 1; msIdx <= newMilestone; ++msIdx) {
+            const milestoneScore = msIdx * this.milestoneBase;
+            if (
+              this.score >= milestoneScore && // Only if current score reaches/crosses it!
+              !this._zombieSpawnMilestones.includes(milestoneScore) // Only trigger once per milestone
+            ) {
+              this._zombieSpawnMilestones.push(milestoneScore);
+            }
+          }
+
           this.effects.push({
             type: 'label',
             x: z.x + z.w / 2,
@@ -881,6 +909,7 @@ class EndlessGameWorld {
           );
         }
         // Collision with player triggers DEATH and sacrifice!
+        // Zombies are ALWAYS 1 hit kill; never get stronger.
         if (this._collide(this.player, z)) {
           this.state = 'sacrifice';
           this.onDeath && this.onDeath();
@@ -1149,18 +1178,14 @@ class EndlessGameWorld {
   }
 
   /**
-   * Spawns a zombie at a side (left/right), speed varies, no HP or health attributes.
-   * @param {number|undefined} x Optional x position override (otherwise calculated by side)
-   * @param {any} _unused Not used; included for legacy API only
-   * @param {'left'|'right'|undefined} side 'left' or 'right' to control spawn side; random if omitted
+   * Spawns a zombie at a side (left/right), speed varies, always 1-hit kill.
+   * No health, no increasing defense, no mutations ever.
    */
   _spawnZombie(x, _unused, side) {
-    // All zombies are 1-hit, no HP
+    // All zombies are 1-hit, no HP, no increase in strength ever!
     const type = zombieTypes[0];
-    // Pick spawn side: left or right (default random)
     let spawnDir = side;
     if (!spawnDir) spawnDir = Math.random() < 0.5 ? "left" : "right";
-    // Entry X: if left, spawn just off left of view (or given x if specified); if right, spawn off right
     let entryX;
     if (typeof x === "number") {
       entryX = x;
@@ -1170,10 +1195,8 @@ class EndlessGameWorld {
       entryX = this.scrollX + this.width + 120 + Math.random() * 80;
     }
 
-    // Entry/movement speed: base is intentionally slow, scaling up with score for difficulty
-    // Start at 0.65, never exceeding type.speed + 1.0; still some random for variety
+    // Entry/movement speed: base is intentionally slow, scaling with score for difficulty, but zombies are always 1 hit kill.
     const baseSpeed = 0.65 + Math.min(this.score / 3500, 1.0) + Math.random() * 0.26;
-    // If spawned from left, speed is positive rightward. If spawned from right, speed is negative (leftward).
     const speed = baseSpeed * (spawnDir === "left" ? 1 : -1);
 
     return {
@@ -1192,18 +1215,22 @@ class EndlessGameWorld {
       coins: type.coins,
       label: type.label,
       labelColor: type.labelColor,
-      // No hp or maxhp
-      spawnDir, // Record spawn direction for proper movement/respawn logic
+      // Zombies never get HP or any defensive stat
+      spawnDir,
     };
   }
 
-  // Spawns eventually scale up to 7+ zombies; caps at score 4000+
+  /**
+   * Calculates the current max number of zombies to spawn, based on
+   * milestone progress (scales at every 2500, 5000, 7500, ...).
+   * Always:
+   *   count = baseZombies + milestonesReached * zombiesPerMilestone
+   *   (e.g. base 3, +2 at 2500, +4 at 5000, etc.)
+   */
   _maxZombieCount() {
-    if (this.score < 600) return 4;
-    if (this.score < 1200) return 5;
-    if (this.score < 2000) return 6;
-    if (this.score < 4000) return 7;
-    return 8;
+    // This ensures as soon as a milestone is unlocked, the extra zombies are available
+    // Always minimum of baseZombies, plus milestones hit times zombiesPerMilestone
+    return this.baseZombies + this._zombieSpawnMilestones.length * this.zombiePerMilestone;
   }
 
   _shoot() {
