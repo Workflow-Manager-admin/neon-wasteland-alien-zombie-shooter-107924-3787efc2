@@ -663,7 +663,19 @@ class EndlessGameWorld {
     if (control.right) dx += this.player.speed;
     this.player.x += dx;
     this.player.dir = dx > 0 ? 1 : dx < 0 ? -1 : this.player.dir;
-    if (this.player.x < 20) this.player.x = 20;
+
+    // --- Prevent player from moving out of canvas bounds, factoring in width ---
+    // Player is centered on x (x is at left edge of sprite), width is this.player.width
+    // The visible canvas (no scroll): x must be >= 0, x+width <= this.width (at scrollX=0)
+    // The world allows scrolling, so restrict player within the visible scroll area.
+    // "this.player.x" is in world coordinates relative to scrollX, but keep player on visible area
+
+    // Clamp player.x so the player remains fully visible within the world/canvas
+    const minX = 0; // left edge of the whole world (scrollX=0)
+    const maxX = this.width - this.player.width; // right edge of visible canvas
+    if (this.player.x < minX) this.player.x = minX;
+    if (this.player.x > maxX) this.player.x = maxX;
+
     if (this.player.x - this.scrollX > this.width * 0.4)
       this.scrollX = this.player.x - this.width * 0.4;
     if (this.scrollX < 0) this.scrollX = 0;
