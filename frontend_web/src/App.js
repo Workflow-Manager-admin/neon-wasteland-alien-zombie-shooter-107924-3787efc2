@@ -17,6 +17,10 @@ function App() {
   const [playerDead, setPlayerDead] = useState(false);
   const [gameSession, setGameSession] = useState(0); // for remount and reset
 
+  // --- FREESOUND MUSIC STATE ---
+  const audioRef = useRef(null);
+  const [bgmError, setBgmError] = useState(null);
+
   // Controls - One simple object (keyboard only, easy to add touch later)
   const [control, setControl] = useState({
     left: false,
@@ -29,7 +33,7 @@ function App() {
   const gameWorld = useRef(null);
 
   // Start or restart game
-  const startGame = React.useCallback(() => {
+  const startGame = React.useCallback(async () => {
     setScore(0);
     setKills(0);
     setCoins(0);
@@ -43,6 +47,47 @@ function App() {
       jump: false
     });
 
+    // --- FREESOUND MUSIC LOGIC ---
+    setBgmError(null);
+
+    // Stop any previous music
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+
+    // Try to fetch Freesound preview url and play
+    const FREESOUND_API = "https://freesound.org/apiv2/sounds/815595/?token=Qa32IPNmELYZ3iBhstYE6aRryuYkMuQPoZVj53Me";
+    try {
+      let resp = await fetch(FREESOUND_API);
+      if (!resp.ok) throw new Error(`Freesound API error ${resp.status}: ${resp.statusText}`);
+      let data = await resp.json();
+      // preview-lq-mp3 is universally available
+      let mp3url = data && data.previews && data.previews["preview-lq-mp3"];
+      if (!mp3url) throw new Error("No audio preview found for sound.");
+      // Create and play audio
+      let audioObj = new Audio(mp3url);
+      audioRef.current = audioObj;
+      audioObj.volume = 1.0; // Full volume
+      // Loop logic: restart audio at end (manual seamless loop)
+      audioObj.loop = false;
+      audioObj.addEventListener("ended", function() {
+        // Restart immediately if game is still running
+        if (gameState === "running") {
+          audioObj.currentTime = 0;
+          audioObj.play().catch(() => {});
+        }
+      });
+      // Try to play (autoplay policy may block, but will generally work after user action)
+      try {
+        await audioObj.play();
+      } catch (err) {
+        setBgmError("Cannot play music: Autoplay blocked or error. Try clicking Start again.");
+      }
+    } catch (err) {
+      setBgmError("Failed to load background music: " + (err.message || "Unknown error"));
+    }
+
     // Core world logic
     gameWorld.current = new EndlessGameWorld({
       onScore: setScore,
@@ -51,9 +96,11 @@ function App() {
       onGameOver: () => {
         setPlayerDead(true);
         setTimeout(() => setGameState("over"), 1200);
+        // Pause music on game over
+        if (audioRef.current) audioRef.current.pause();
       }
     });
-  }, []);
+  }, [gameState]);
 
   // Frame draw loop
   useAnimationFrame(() => {
@@ -66,6 +113,21 @@ function App() {
       gameWorld.current.draw(canvasRef.current);
     }
   }, gameState === "running");
+
+  // Cleanup audio on menu/game end
+  useEffect(() => {
+    if (gameState !== "running" && audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    // On unmount
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+    };
+  }, [gameState]);
 
   // Keyboard controls (basic, no stacking combos)
   useEffect(() => {
@@ -110,6 +172,7 @@ function App() {
             coins={coins}
             onStart={startGame}
             playerDead={playerDead}
+            bgmError={bgmError}
           />
         )}
       </div>
@@ -139,8 +202,11 @@ function HUD({ score, coins, kills }) {
   );
 }
 
+/**
+ * Overlay component with extra error message support for background music loading/playing
+ */
 // PUBLIC_INTERFACE
-function Overlay({ state, score, kills, coins, onStart, playerDead }) {
+function Overlay({ state, score, kills, coins, onStart, playerDead, bgmError }) {
   if (state === "menu")
     return (
       <div className="game-overlay" tabIndex={-1}>
@@ -155,6 +221,21 @@ function Overlay({ state, score, kills, coins, onStart, playerDead }) {
         <button className="neon-btn" onClick={onStart} autoFocus>
           Start Game
         </button>
+        {bgmError && (
+          <div style={{
+            marginTop: '1em',
+            color: '#ff7777',
+            background: '#23243a',
+            borderRadius: '8px',
+            padding: '8px 18px',
+            maxWidth: 400,
+            fontSize: '1em',
+            textAlign: 'center',
+            boxShadow: '0 0 10px #aa2c6922'
+          }}>
+            <b>Music error:</b> {bgmError}
+          </div>
+        )}
       </div>
     );
   if (state === "over")
@@ -169,6 +250,21 @@ function Overlay({ state, score, kills, coins, onStart, playerDead }) {
         <button className="neon-btn" style={{ fontSize: "1.2em", marginTop: "1.2em" }} onClick={onStart}>
           PLAY AGAIN
         </button>
+        {bgmError && (
+          <div style={{
+            marginTop: '1em',
+            color: '#ff7777',
+            background: '#23243a',
+            borderRadius: '8px',
+            padding: '8px 18px',
+            maxWidth: 400,
+            fontSize: '1em',
+            textAlign: 'center',
+            boxShadow: '0 0 10px #aa2c6922'
+          }}>
+            <b>Music error:</b> {bgmError}
+          </div>
+        )}
       </div>
     );
   return null;
